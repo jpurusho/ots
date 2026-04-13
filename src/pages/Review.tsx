@@ -5,8 +5,10 @@ import { useAuth } from '@/lib/auth-context'
 import { logActivity } from '@/lib/activity'
 import {
   CheckCircle, Loader2, ChevronLeft, ChevronRight,
-  Eye, Pencil, Save, RotateCcw, Trash2, FileText,
+  Eye, Pencil, Save, RotateCcw, Trash2, FileText, RefreshCw,
 } from 'lucide-react'
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 type Offering = {
   id: number
@@ -165,9 +167,16 @@ export function ReviewPage() {
     queryKey: ['offering-image', selected?.image_path],
     queryFn: async () => {
       if (!selected?.image_path) return null
-      const { data } = await supabase.storage
+      // Refresh session to ensure valid JWT for storage access
+      await supabase.auth.refreshSession()
+      const { data, error } = await supabase.storage
         .from('offering-images')
         .createSignedUrl(selected.image_path, 3600)
+      if (error) {
+        console.error('[Review] createSignedUrl error:', error)
+        return null
+      }
+      console.log('[Review] signedUrl:', data?.signedUrl)
       return data?.signedUrl || null
     },
     enabled: !!selected?.image_path,
@@ -233,6 +242,26 @@ export function ReviewPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['offerings'] })
       setEditMode(false)
+    },
+  })
+
+  // Rescan mutation
+  const rescanMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const resp = await fetch(`${BACKEND_URL}/api/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offering_id: id }),
+      })
+      const data = await resp.json()
+      if (!data.success) throw new Error(data.error || data.detail || 'Scan failed')
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['offerings'] })
+      const o = offerings?.find(o => o.id === selected?.id)
+      logActivity(appUser?.email || null, 'rescan',
+        `Rescanned ${o?.filename || `offering #${selected?.id}`}`, 'offering', selected?.id)
     },
   })
 
@@ -471,16 +500,27 @@ export function ReviewPage() {
                 </div>
               )}
 
-              {/* Scan error */}
+              {/* Scan/rescan errors */}
               {selected.scan_error && (
                 <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                   {selected.scan_error}
+                </div>
+              )}
+              {rescanMutation.error && (
+                <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                  Rescan failed: {(rescanMutation.error as Error).message}
                 </div>
               )}
             </div>
 
             {/* Actions */}
             <div className="px-4 py-3 border-t border-border flex gap-2">
+              <button onClick={() => rescanMutation.mutate(selected.id)}
+                disabled={rescanMutation.isPending}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted-foreground/10 transition-colors cursor-pointer disabled:opacity-50">
+                {rescanMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Rescan
+              </button>
               <button onClick={() => approveMutation.mutate(selected.id)} disabled={approveMutation.isPending}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-success text-white font-medium text-sm hover:bg-success/90 transition-colors cursor-pointer disabled:opacity-50">
                 {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
