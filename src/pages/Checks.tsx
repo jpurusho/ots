@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Loader2, Receipt, Users, DollarSign, Wallet } from 'lucide-react'
+import { Loader2, Receipt, Users, DollarSign, Wallet, Printer, ArrowLeft, FileText } from 'lucide-react'
 
 interface Check {
   id: number
@@ -14,6 +14,8 @@ interface Check {
   amount: number | null
   category: string | null
   created_at: string
+  offering_date: string | null
+  offering_status: string | null
 }
 
 interface Contributor {
@@ -21,13 +23,53 @@ interface Contributor {
   total: number
   count: number
   categories: Record<string, number>
+  checks: Check[]
+}
+
+const fmt = (n: number) => `$${n.toFixed(2)}`
+
+// Fetch church name for reports
+function useChurchName() {
+  const { data } = useQuery({
+    queryKey: ['settings', 'church_name'],
+    queryFn: async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'church_name').single()
+      return data?.value || 'Offering Report'
+    },
+  })
+  return data || ''
+}
+
+function printReport(title: string, subtitle: string, html: string) {
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 40px; color: #111; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 14px; color: #666; font-weight: normal; margin: 0 0 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; text-align: left; }
+  th { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #333; }
+  .right { text-align: right; }
+  tfoot td { border-top: 2px solid #333; font-weight: bold; }
+  .footer { margin-top: 30px; font-size: 10px; color: #999; }
+  @media print { body { margin: 20px; } }
+</style></head><body>
+<h1>${title}</h1><h2>${subtitle}</h2>
+${html}
+<p class="footer">Generated ${new Date().toLocaleDateString()} | OTS</p>
+</body></html>`)
+  w.document.close()
+  setTimeout(() => w.print(), 300)
 }
 
 export function ChecksPage() {
+  const churchName = useChurchName()
   const [tab, setTab] = useState<'checks' | 'contributors' | 'statements'>('checks')
   const [statementsYear, setStatementsYear] = useState(new Date().getFullYear())
+  const [selectedContributor, setSelectedContributor] = useState<string | null>(null)
 
-  // Fetch checks joined with offering date
   const { data: checks, isLoading } = useQuery({
     queryKey: ['offering-checks'],
     queryFn: async () => {
@@ -40,56 +82,179 @@ export function ChecksPage() {
         ...c,
         offering_date: c.offerings?.offering_date || null,
         offering_status: c.offerings?.status || null,
-      })) as (Check & { offering_date: string | null; offering_status: string | null })[]
+      })) as Check[]
     },
   })
 
   const allChecks = checks || []
   const totalAmount = allChecks.reduce((s, c) => s + (c.amount || 0), 0)
 
-  // Build contributor summary
+  // Build contributors
   const contributorMap = new Map<string, Contributor>()
   for (const c of allChecks) {
     const name = c.payer_name || 'Unknown'
-    const existing = contributorMap.get(name) || { payer_name: name, total: 0, count: 0, categories: {} }
+    const existing = contributorMap.get(name) || { payer_name: name, total: 0, count: 0, categories: {}, checks: [] }
     existing.total += c.amount || 0
     existing.count += 1
     const cat = c.category || 'general'
     existing.categories[cat] = (existing.categories[cat] || 0) + (c.amount || 0)
+    existing.checks.push(c)
     contributorMap.set(name, existing)
   }
   const contributors = [...contributorMap.values()].sort((a, b) => b.total - a.total)
 
-  // Year-end statements
+  // Year-end
   const yearChecks = allChecks.filter(c => {
     const d = c.offering_date
     if (!d) return false
-    const yearMatch = d.match(/(\d{4})/)
-    return yearMatch && parseInt(yearMatch[1]) === statementsYear
+    const m = d.match(/(\d{4})/)
+    return m && parseInt(m[1]) === statementsYear
   })
-  const yearContributorMap = new Map<string, { payer_name: string; total: number; count: number; firstDate: string; lastDate: string }>()
+  const yearMap = new Map<string, { payer_name: string; total: number; count: number; firstDate: string; lastDate: string }>()
   for (const c of yearChecks) {
     const name = c.payer_name || 'Unknown'
-    const existing = yearContributorMap.get(name) || { payer_name: name, total: 0, count: 0, firstDate: c.offering_date || '', lastDate: c.offering_date || '' }
+    const existing = yearMap.get(name) || { payer_name: name, total: 0, count: 0, firstDate: c.offering_date || '', lastDate: c.offering_date || '' }
     existing.total += c.amount || 0
     existing.count += 1
     if (c.offering_date && c.offering_date < existing.firstDate) existing.firstDate = c.offering_date
     if (c.offering_date && c.offering_date > existing.lastDate) existing.lastDate = c.offering_date
-    yearContributorMap.set(name, existing)
+    yearMap.set(name, existing)
   }
-  const yearStatements = [...yearContributorMap.values()].sort((a, b) => b.total - a.total)
+  const yearStatements = [...yearMap.values()].sort((a, b) => b.total - a.total)
 
-  const fmt = (n: number) => `$${n.toFixed(2)}`
+  // Selected contributor detail
+  const selectedContrib = selectedContributor ? contributorMap.get(selectedContributor) : null
+
+  const printContributorStatement = (contrib: Contributor) => {
+    const rows = contrib.checks.map(c =>
+      `<tr><td>${c.offering_date || '—'}</td><td>${c.check_number || '—'}</td>
+       <td>${c.bank_name || '—'}</td><td class="capitalize">${(c.category || 'general').replace('_', ' ')}</td>
+       <td>${c.memo || '—'}</td><td class="right">${fmt(c.amount || 0)}</td></tr>`
+    ).join('')
+    printReport(
+      churchName,
+      `Contribution Statement — ${contrib.payer_name}`,
+      `<table><thead><tr><th>Date</th><th>Check #</th><th>Bank</th><th>Category</th><th>Memo</th><th class="right">Amount</th></tr></thead>
+       <tbody>${rows}</tbody>
+       <tfoot><tr><td colspan="5"><strong>Total (${contrib.count} checks)</strong></td><td class="right">${fmt(contrib.total)}</td></tr></tfoot></table>`
+    )
+  }
+
+  const printAllChecksReport = () => {
+    const rows = allChecks.map(c =>
+      `<tr><td>${c.payer_name || 'Unknown'}</td><td>${c.check_number || '—'}</td>
+       <td>${c.offering_date || '—'}</td><td class="capitalize">${(c.category || 'general').replace('_', ' ')}</td>
+       <td>${c.memo || '—'}</td><td class="right">${fmt(c.amount || 0)}</td></tr>`
+    ).join('')
+    printReport(
+      churchName,
+      `Check Contributions Report — ${allChecks.length} checks`,
+      `<table><thead><tr><th>Payer</th><th>Check #</th><th>Date</th><th>Category</th><th>Memo</th><th class="right">Amount</th></tr></thead>
+       <tbody>${rows}</tbody>
+       <tfoot><tr><td colspan="5"><strong>Grand Total</strong></td><td class="right">${fmt(totalAmount)}</td></tr></tfoot></table>`
+    )
+  }
+
+  const printYearEndReport = () => {
+    const rows = yearStatements.map(s =>
+      `<tr><td>${s.payer_name}</td><td style="text-align:center">${s.count}</td>
+       <td>${s.firstDate} — ${s.lastDate}</td><td class="right">${fmt(s.total)}</td></tr>`
+    ).join('')
+    const yearTotal = yearStatements.reduce((s, r) => s + r.total, 0)
+    printReport(
+      churchName,
+      `Year-End Contribution Summary — ${statementsYear}`,
+      `<table><thead><tr><th>Contributor</th><th style="text-align:center">Checks</th><th>Period</th><th class="right">Total</th></tr></thead>
+       <tbody>${rows}</tbody>
+       <tfoot><tr><td colspan="3"><strong>Grand Total (${yearStatements.length} contributors)</strong></td><td class="right">${fmt(yearTotal)}</td></tr></tfoot></table>`
+    )
+  }
 
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+  }
+
+  // Contributor detail view
+  if (selectedContrib) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setSelectedContributor(null)}
+            className="p-2 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold">{selectedContrib.payer_name}</h1>
+            <p className="text-muted text-sm">{selectedContrib.count} check{selectedContrib.count !== 1 ? 's' : ''} — {fmt(selectedContrib.total)} total</p>
+          </div>
+          <div className="ml-auto">
+            <button onClick={() => printContributorStatement(selectedContrib)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer">
+              <Printer className="w-4 h-4" /> Print Statement
+            </button>
+          </div>
+        </div>
+
+        {/* Category breakdown */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {Object.entries(selectedContrib.categories).map(([cat, amount]) => (
+            <div key={cat} className="rounded-lg border border-border bg-card p-3 text-center">
+              <p className="text-[10px] text-muted uppercase tracking-wider capitalize">{cat.replace('_', ' ')}</p>
+              <p className="text-lg font-bold">{fmt(amount)}</p>
+            </div>
+          ))}
+          <div className="rounded-lg border border-border bg-card p-3 text-center">
+            <p className="text-[10px] text-muted uppercase tracking-wider">Total</p>
+            <p className="text-lg font-bold text-primary">{fmt(selectedContrib.total)}</p>
+          </div>
+        </div>
+
+        {/* Individual checks */}
+        <div className="rounded-xl border border-border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-card border-b border-border">
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted">Date</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted">Check #</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted">Bank</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted">Category</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted">Memo</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-muted">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {selectedContrib.checks.map(c => (
+                <tr key={c.id} className="hover:bg-muted-foreground/5">
+                  <td className="px-4 py-2">{c.offering_date || '—'}</td>
+                  <td className="px-4 py-2">{c.check_number || '—'}</td>
+                  <td className="px-4 py-2 text-muted">{c.bank_name || '—'}</td>
+                  <td className="px-4 py-2">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted-foreground/10 capitalize">
+                      {(c.category || 'general').replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-xs text-muted">{c.memo || '—'}</td>
+                  <td className="px-4 py-2 text-right font-bold">{fmt(c.amount || 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-card border-t-2 border-border font-bold">
+                <td colSpan={5} className="px-4 py-2">Total</td>
+                <td className="px-4 py-2 text-right text-primary">{fmt(selectedContrib.total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Check Contributions</h1>
-        <p className="text-muted text-sm">Track individual check contributions and generate year-end statements</p>
+        <p className="text-muted text-sm">Track individual check contributions and generate statements</p>
       </div>
 
       {allChecks.length === 0 ? (
@@ -97,45 +262,55 @@ export function ChecksPage() {
           <Receipt className="w-10 h-10 mx-auto text-muted mb-3" />
           <p className="text-muted font-medium">No check contributions yet</p>
           <p className="text-xs text-muted mt-2 max-w-md mx-auto">
-            Check contributions are recorded when you scan bank check images.
-            Upload photos of individual checks in the Offerings page — the AI will extract
+            Upload photos of individual bank checks in Offerings — the AI will extract
             payer name, check number, amount, and memo automatically.
           </p>
         </div>
       ) : (
         <>
-          {/* Summary cards */}
+          {/* Summary */}
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-center gap-2 text-muted text-sm mb-1">
-                <Wallet className="w-4 h-4" /> Total Checks
-              </div>
+              <div className="flex items-center gap-2 text-muted text-sm mb-1"><Wallet className="w-4 h-4" /> Total Checks</div>
               <p className="text-xl font-bold">{allChecks.length}</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-center gap-2 text-muted text-sm mb-1">
-                <DollarSign className="w-4 h-4" /> Total Amount
-              </div>
+              <div className="flex items-center gap-2 text-muted text-sm mb-1"><DollarSign className="w-4 h-4" /> Total Amount</div>
               <p className="text-xl font-bold text-primary">{fmt(totalAmount)}</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-center gap-2 text-muted text-sm mb-1">
-                <Users className="w-4 h-4" /> Contributors
-              </div>
+              <div className="flex items-center gap-2 text-muted text-sm mb-1"><Users className="w-4 h-4" /> Contributors</div>
               <p className="text-xl font-bold">{contributors.length}</p>
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-border">
-            {(['checks', 'contributors', 'statements'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer capitalize ${
-                  tab === t ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-foreground'
-                }`}>
-                {t === 'statements' ? 'Year-End' : t === 'checks' ? 'All Checks' : 'Contributors'}
-              </button>
-            ))}
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1 border-b border-border">
+              {(['checks', 'contributors', 'statements'] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+                    tab === t ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-foreground'
+                  }`}>
+                  {t === 'statements' ? 'Year-End' : t === 'checks' ? 'All Checks' : 'Contributors'}
+                </button>
+              ))}
+            </div>
+            {/* Report buttons */}
+            <div className="flex gap-2">
+              {tab === 'checks' && (
+                <button onClick={printAllChecksReport}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-xs cursor-pointer">
+                  <FileText className="w-3.5 h-3.5" /> Export All Checks
+                </button>
+              )}
+              {tab === 'statements' && yearStatements.length > 0 && (
+                <button onClick={printYearEndReport}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-xs cursor-pointer">
+                  <FileText className="w-3.5 h-3.5" /> Export Year-End
+                </button>
+              )}
+            </div>
           </div>
 
           {tab === 'checks' && (
@@ -153,8 +328,9 @@ export function ChecksPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {allChecks.map(c => (
-                    <tr key={c.id} className="hover:bg-muted-foreground/5">
-                      <td className="px-4 py-2 font-medium">{c.payer_name || 'Unknown'}</td>
+                    <tr key={c.id} className="hover:bg-muted-foreground/5 cursor-pointer"
+                      onClick={() => { setSelectedContributor(c.payer_name); }}>
+                      <td className="px-4 py-2 font-medium text-primary">{c.payer_name || 'Unknown'}</td>
                       <td className="px-4 py-2 text-muted">{c.check_number || '—'}</td>
                       <td className="px-4 py-2 text-xs">{c.offering_date || '—'}</td>
                       <td className="px-4 py-2">
@@ -167,6 +343,12 @@ export function ChecksPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="bg-card border-t-2 border-border font-bold">
+                    <td colSpan={5} className="px-4 py-2">Grand Total</td>
+                    <td className="px-4 py-2 text-right text-primary">{fmt(totalAmount)}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -174,7 +356,9 @@ export function ChecksPage() {
           {tab === 'contributors' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {contributors.map(c => (
-                <div key={c.payer_name} className="rounded-xl border border-border bg-card p-4">
+                <div key={c.payer_name}
+                  onClick={() => setSelectedContributor(c.payer_name)}
+                  className="rounded-xl border border-border bg-card p-4 hover:border-primary/30 transition-colors cursor-pointer">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">{c.payer_name}</p>
@@ -218,8 +402,9 @@ export function ChecksPage() {
                     </thead>
                     <tbody className="divide-y divide-border">
                       {yearStatements.map(s => (
-                        <tr key={s.payer_name} className="hover:bg-muted-foreground/5">
-                          <td className="px-4 py-2 font-medium">{s.payer_name}</td>
+                        <tr key={s.payer_name} className="hover:bg-muted-foreground/5 cursor-pointer"
+                          onClick={() => setSelectedContributor(s.payer_name)}>
+                          <td className="px-4 py-2 font-medium text-primary">{s.payer_name}</td>
                           <td className="px-4 py-2 text-center text-muted">{s.count}</td>
                           <td className="px-4 py-2 text-xs text-muted">{s.firstDate} — {s.lastDate}</td>
                           <td className="px-4 py-2 text-right font-bold">{fmt(s.total)}</td>
