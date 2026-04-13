@@ -6,12 +6,17 @@ import { LoginPage } from '@/pages/Login'
 import { DashboardPage } from '@/pages/Dashboard'
 import { OfferingsPage } from '@/pages/Offerings'
 import { ReviewPage } from '@/pages/Review'
+import { ReportsPage } from '@/pages/Reports'
+import { ManualEntryPage } from '@/pages/ManualEntry'
+import { SettingsPage } from '@/pages/Settings'
+import { UsersPage } from '@/pages/Users'
+import { ActivityPage } from '@/pages/Activity'
 import { Loader2 } from 'lucide-react'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60, // 1 minute
+      staleTime: 1000 * 60,
       retry: 1,
     },
   },
@@ -37,22 +42,14 @@ function AuthGate() {
       <Route element={<Layout />}>
         <Route index element={<DashboardPage />} />
         <Route path="offerings" element={<OfferingsPage />} />
+        <Route path="manual-entry" element={<ManualEntryPage />} />
         <Route path="review" element={<ReviewPage />} />
-        <Route path="reports" element={<Placeholder title="Reports" />} />
-        <Route path="settings" element={<Placeholder title="Settings" />} />
-        <Route path="users" element={<Placeholder title="Users" />} />
-        <Route path="activity" element={<Placeholder title="Activity" />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="users" element={<UsersPage />} />
+        <Route path="activity" element={<ActivityPage />} />
       </Route>
     </Routes>
-  )
-}
-
-function Placeholder({ title }: { title: string }) {
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      <p className="text-muted">This page is under construction.</p>
-    </div>
   )
 }
 
