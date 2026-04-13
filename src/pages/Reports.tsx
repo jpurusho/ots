@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { FileText, Download, Loader2, ChevronLeft, ChevronRight, Printer } from 'lucide-react'
+import { FileText, Download, Loader2, ChevronLeft, ChevronRight, Printer, ExternalLink, Share2, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface ApprovedOffering {
   id: number
@@ -21,9 +22,11 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
 
 export function ReportsPage() {
+  const navigate = useNavigate()
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth())
   const [year, setYear] = useState(now.getFullYear())
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   // Parse date strings in various formats (MM/DD/YYYY, YYYY-MM-DD) to Date
   const parseOfferingDate = (d: string | null): Date | null => {
@@ -160,8 +163,16 @@ export function ReportsPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {offerings.map(o => (
-                    <tr key={o.id} className="hover:bg-muted-foreground/5">
-                      <td className="px-4 py-2.5 font-medium">{formatDate(o.offering_date)}</td>
+                    <>
+                    <tr key={o.id}
+                      onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
+                      className="hover:bg-muted-foreground/5 cursor-pointer">
+                      <td className="px-4 py-2.5 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {expandedId === o.id ? <ChevronUp className="w-3 h-3 text-muted" /> : <ChevronDown className="w-3 h-3 text-muted" />}
+                          {formatDate(o.offering_date)}
+                        </div>
+                      </td>
                       <td className="px-4 py-2.5 text-right">{fmt(o.general)}</td>
                       <td className="px-4 py-2.5 text-right">{fmt(o.cash)}</td>
                       <td className="px-4 py-2.5 text-right">{fmt(o.sunday_school)}</td>
@@ -169,6 +180,57 @@ export function ReportsPage() {
                       <td className="px-4 py-2.5 text-right">{fmt(o.misc)}</td>
                       <td className="px-4 py-2.5 text-right font-bold">${rowTotal(o).toFixed(2)}</td>
                     </tr>
+                    {expandedId === o.id && (
+                      <tr key={`${o.id}-detail`}>
+                        <td colSpan={7} className="px-4 py-3 bg-card/50">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1 text-xs">
+                              <p className="font-medium text-sm mb-2">Week of {formatDate(o.offering_date)}</p>
+                              {o.general > 0 && <p>General (Checks): <strong>${o.general.toFixed(2)}</strong></p>}
+                              {o.cash > 0 && <p>Cash (Denominations): <strong>${o.cash.toFixed(2)}</strong></p>}
+                              {o.sunday_school > 0 && <p>Sunday School: <strong>${o.sunday_school.toFixed(2)}</strong></p>}
+                              {o.building_fund > 0 && <p>Building Fund: <strong>${o.building_fund.toFixed(2)}</strong></p>}
+                              {o.misc > 0 && <p>Miscellaneous: <strong>${o.misc.toFixed(2)}</strong></p>}
+                              <p className="pt-1 font-bold">Total: ${rowTotal(o).toFixed(2)}</p>
+                              {o.notes && <p className="text-muted pt-1">{o.notes}</p>}
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <button onClick={(e) => { e.stopPropagation(); navigate(`/review?id=${o.id}`) }}
+                                className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                                <ExternalLink className="w-3 h-3" /> View
+                              </button>
+                              <button onClick={(e) => {
+                                e.stopPropagation()
+                                const cardHtml = `<!DOCTYPE html><html><head><title>Offering ${formatDate(o.offering_date)}</title>
+<style>body{font-family:system-ui,sans-serif;margin:40px;max-width:500px;}
+h2{margin:0 0 4px;font-size:16px;}h3{margin:0;color:#666;font-weight:normal;font-size:13px;}
+.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee;font-size:13px;}
+.total{font-weight:bold;font-size:15px;border-top:2px solid #333;margin-top:4px;padding-top:8px;}
+.footer{margin-top:20px;font-size:10px;color:#999;}
+</style></head><body>
+<h2>Weekly Offering</h2><h3>${formatDate(o.offering_date)}</h3>
+<div style="margin-top:16px">
+${o.general > 0 ? `<div class="row"><span>General (Checks)</span><span>$${o.general.toFixed(2)}</span></div>` : ''}
+${o.cash > 0 ? `<div class="row"><span>Cash (Denominations)</span><span>$${o.cash.toFixed(2)}</span></div>` : ''}
+${o.sunday_school > 0 ? `<div class="row"><span>Sunday School</span><span>$${o.sunday_school.toFixed(2)}</span></div>` : ''}
+${o.building_fund > 0 ? `<div class="row"><span>Building Fund</span><span>$${o.building_fund.toFixed(2)}</span></div>` : ''}
+${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFixed(2)}</span></div>` : ''}
+<div class="row total"><span>Total</span><span>$${rowTotal(o).toFixed(2)}</span></div>
+</div>
+<p class="footer">Generated ${new Date().toLocaleDateString()} | OTS</p>
+</body></html>`
+                                const w = window.open('', '_blank')
+                                if (w) { w.document.write(cardHtml); w.document.close(); setTimeout(() => w.print(), 300) }
+                              }}
+                                className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                                <Share2 className="w-3 h-3" /> Share Card
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </>
                   ))}
                 </tbody>
                 <tfoot>

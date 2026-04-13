@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
@@ -108,11 +109,14 @@ function SectionBreakdown({ sectionKey, section }: { sectionKey: string; section
 export function ReviewPage() {
   const { appUser } = useAuth()
   const queryClient = useQueryClient()
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [searchParams] = useSearchParams()
+  const offeringIdParam = searchParams.get('id')
+
+  const [selectedId, setSelectedId] = useState<number | null>(offeringIdParam ? parseInt(offeringIdParam) : null)
   const [editMode, setEditMode] = useState(false)
   const [editValues, setEditValues] = useState<Partial<Offering>>({})
   const [showNotes, setShowNotes] = useState(false)
-  const [viewMode, setViewMode] = useState<'pending' | 'approved'>('pending')
+  const [viewMode, setViewMode] = useState<'pending' | 'approved'>(offeringIdParam ? 'approved' : 'pending')
 
   const { data: offerings, isLoading } = useQuery({
     queryKey: ['offerings', viewMode],
