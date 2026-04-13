@@ -91,7 +91,48 @@ export function OfferingsPage() {
       setUploadCurrent(i + 1)
 
       try {
-        // Generate unique filename with timestamp
+        // Compute MD5 hash of file content for duplicate detection
+        const arrayBuffer = await file.arrayBuffer()
+        const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer)
+        const hashArray = Array.from(new Uint8Array(hashBuffer))
+        const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32)
+
+        // Check for duplicates by filename or content hash
+        const { data: existingByName } = await supabase
+          .from('offerings')
+          .select('id, offering_date, status')
+          .eq('filename', file.name)
+          .limit(1)
+
+        if (existingByName && existingByName.length > 0) {
+          const existing = existingByName[0]
+          allResults.push({
+            filename: file.name,
+            success: false,
+            error: `Already uploaded (${existing.status}, date: ${existing.offering_date || 'unknown'})`,
+          })
+          setResults([...allResults])
+          continue
+        }
+
+        const { data: existingByHash } = await supabase
+          .from('offerings')
+          .select('id, filename, offering_date, status')
+          .eq('file_hash', fileHash)
+          .limit(1)
+
+        if (existingByHash && existingByHash.length > 0) {
+          const existing = existingByHash[0]
+          allResults.push({
+            filename: file.name,
+            success: false,
+            error: `Duplicate content — same as ${existing.filename} (${existing.offering_date || 'unknown'})`,
+          })
+          setResults([...allResults])
+          continue
+        }
+
+        // Generate storage path
         const timestamp = Date.now()
         const storagePath = `${new Date().getFullYear()}/${timestamp}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
 
@@ -110,7 +151,7 @@ export function OfferingsPage() {
           .from('offerings')
           .insert({
             filename: file.name,
-            file_hash: `${timestamp}`,
+            file_hash: fileHash,
             image_path: storagePath,
             status: 'uploaded',
             source_type: 'scanned',

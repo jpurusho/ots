@@ -666,16 +666,25 @@ export function ReviewPage() {
                 {rescanMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 Rescan
               </button>
-              <button onClick={() => approveMutation.mutate(selected.id)} disabled={approveMutation.isPending}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-success text-white font-medium text-sm hover:bg-success/90 transition-colors cursor-pointer disabled:opacity-50">
-                {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                Approve
-              </button>
-              <button onClick={() => discardMutation.mutate(selected.id)} disabled={discardMutation.isPending}
-                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50">
-                <Trash2 className="w-4 h-4" />
-                Discard
-              </button>
+              {selected.status !== 'approved' ? (
+                <>
+                  <button onClick={() => approveMutation.mutate(selected.id)} disabled={approveMutation.isPending}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-success text-white font-medium text-sm hover:bg-success/90 transition-colors cursor-pointer disabled:opacity-50">
+                    {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    Approve
+                  </button>
+                  <button onClick={() => discardMutation.mutate(selected.id)} disabled={discardMutation.isPending}
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50">
+                    <Trash2 className="w-4 h-4" />
+                    Discard
+                  </button>
+                </>
+              ) : (
+                <span className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-success/10 text-success text-sm">
+                  <CheckCircle className="w-4 h-4" />
+                  Approved
+                </span>
+              )}
             </div>
           </div>
         </div>
