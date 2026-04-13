@@ -5,8 +5,8 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  // Custom domain (ots.ccisr.com) uses root path. No /ots/ prefix needed.
-  base: '/',
+  // GitHub Pages serves from /ots/ path. Use '/' for custom domain.
+  base: process.env.GITHUB_ACTIONS ? '/ots/' : '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
