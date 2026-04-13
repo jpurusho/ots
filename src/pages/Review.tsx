@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
@@ -131,11 +131,19 @@ export function ReviewPage() {
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const isPanning = useRef(false)
   const panStart = useRef({ x: 0, y: 0 })
+  const imageContainerRef = useRef<HTMLDivElement>(null)
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    setZoom(z => Math.max(0.5, Math.min(5, z - e.deltaY * 0.002)))
-  }, [])
+  // Attach wheel listener as non-passive to allow preventDefault (avoids console warnings)
+  useEffect(() => {
+    const el = imageContainerRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      setZoom(z => Math.max(0.5, Math.min(5, z - e.deltaY * 0.002)))
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [selected?.id])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (zoom <= 1) return
@@ -318,9 +326,9 @@ export function ReviewPage() {
               </div>
             </div>
             <div
+              ref={imageContainerRef}
               className="min-h-[400px] max-h-[700px] overflow-hidden bg-black/5 flex items-center justify-center select-none"
               style={{ cursor: zoom > 1 ? 'grab' : 'zoom-in' }}
-              onWheel={handleWheel}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
