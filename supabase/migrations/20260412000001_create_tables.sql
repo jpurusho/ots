@@ -93,7 +93,7 @@ CREATE INDEX idx_app_settings_category ON app_settings(category);
 
 -- Seed essential settings
 INSERT INTO app_settings (key, value, category, data_type, label, description) VALUES
-  ('church_name', '', 'general', 'string', 'Organization Name', 'Displayed in report headers'),
+  ('church_name', 'Christ Church of India, San Ramon', 'general', 'string', 'Organization Name', 'Displayed in report headers'),
   ('scanner_model', 'claude-sonnet-4-6-20250929', 'ai', 'string', 'Scanner Model', 'Claude model for image scanning'),
   ('use_bedrock', 'false', 'ai', 'boolean', 'Use AWS Bedrock', 'Use Bedrock instead of direct Anthropic API'),
   ('items_per_page', '20', 'general', 'number', 'Items Per Page', 'Number of items shown in lists');

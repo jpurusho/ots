@@ -295,12 +295,6 @@ export function ReviewPage() {
   const goPrev = () => { if (offerings && currentIndex > 0) { setSelectedId(offerings[currentIndex - 1].id); setEditMode(false); resetZoom() } }
   const goNext = () => { if (offerings && currentIndex < offerings.length - 1) { setSelectedId(offerings[currentIndex + 1].id); setEditMode(false); resetZoom() } }
 
-  if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-  }
-
-  // Empty state is handled inline below (after the toggle renders)
-
   const amountFields = [
     { key: 'general', label: 'General (Checks)', sectionKey: 'general_checks' },
     { key: 'cash', label: 'Cash (Denominations)', sectionKey: 'general_cash' },
@@ -345,7 +339,11 @@ export function ReviewPage() {
         )}
       </div>
 
-      {(!offerings || offerings.length === 0) && (
+      {isLoading && (
+        <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+      )}
+
+      {!isLoading && (!offerings || offerings.length === 0) && (
         <div className="rounded-xl border border-border bg-card p-10 text-center">
           <p className="text-muted">
             {viewMode === 'pending' ? 'No offerings pending review.' : 'No approved offerings yet.'}

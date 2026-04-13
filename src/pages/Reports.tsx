@@ -26,6 +26,19 @@ export function ReportsPage() {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth())
   const [year, setYear] = useState(now.getFullYear())
+
+  // Fetch church name from settings
+  const { data: churchName } = useQuery({
+    queryKey: ['settings', 'church_name'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'church_name')
+        .single()
+      return data?.value || 'Offering Report'
+    },
+  })
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
   // Parse date strings in various formats (MM/DD/YYYY, YYYY-MM-DD) to Date
@@ -103,7 +116,7 @@ export function ReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Reports</h1>
-          <p className="text-muted text-sm">Approved offerings summary</p>
+          <p className="text-muted text-sm">{churchName || 'Offerings'} — Monthly Report</p>
         </div>
       </div>
 
@@ -208,7 +221,7 @@ h2{margin:0 0 4px;font-size:16px;}h3{margin:0;color:#666;font-weight:normal;font
 .total{font-weight:bold;font-size:15px;border-top:2px solid #333;margin-top:4px;padding-top:8px;}
 .footer{margin-top:20px;font-size:10px;color:#999;}
 </style></head><body>
-<h2>Weekly Offering</h2><h3>${formatDate(o.offering_date)}</h3>
+<h2>${churchName || 'Weekly Offering'}</h2><h3>Week of ${formatDate(o.offering_date)}</h3>
 <div style="margin-top:16px">
 ${o.general > 0 ? `<div class="row"><span>General (Checks)</span><span>$${o.general.toFixed(2)}</span></div>` : ''}
 ${o.cash > 0 ? `<div class="row"><span>Cash (Denominations)</span><span>$${o.cash.toFixed(2)}</span></div>` : ''}
@@ -253,9 +266,9 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
             <button
               onClick={() => {
                 // PDF export via print window
-                const churchName = 'Offering Report' // TODO: read from app_settings
+                const title = churchName || 'Offering Report'
                 const html = `<!DOCTYPE html>
-<html><head><title>${MONTHS[month]} ${year} - Offering Report</title>
+<html><head><title>${title} — ${MONTHS[month]} ${year}</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 40px; color: #111; }
   h1 { font-size: 18px; margin-bottom: 4px; }
@@ -271,7 +284,7 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
   .summary .value { font-size: 18px; font-weight: bold; margin-top: 2px; }
   @media print { body { margin: 20px; } }
 </style></head><body>
-<h1>${churchName}</h1>
+<h1>${title}</h1>
 <h2>${MONTHS[month]} ${year}</h2>
 <table>
   <thead><tr>
