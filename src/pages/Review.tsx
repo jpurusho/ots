@@ -252,20 +252,10 @@ export function ReviewPage() {
 
   const resetZoom = () => { setZoom(1); setPan({ x: 0, y: 0 }) }
 
-  const { data: imageUrl } = useQuery({
-    queryKey: ['offering-image', selected?.image_path],
-    queryFn: async () => {
-      if (!selected?.image_path) return null
-      // Refresh session to ensure valid JWT for storage access
-      await supabase.auth.refreshSession()
-      const { data, error } = await supabase.storage
-        .from('offering-images')
-        .createSignedUrl(selected.image_path, 3600)
-      if (error) return null
-      return data?.signedUrl || null
-    },
-    enabled: !!selected?.image_path,
-  })
+  // Public URL — no auth needed, works reliably in all views
+  const imageUrl = selected?.image_path
+    ? supabase.storage.from('offering-images').getPublicUrl(selected.image_path).data.publicUrl
+    : null
 
   const approveMutation = useMutation({
     mutationFn: async (id: number) => {

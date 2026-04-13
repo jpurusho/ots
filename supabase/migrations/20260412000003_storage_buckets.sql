@@ -1,7 +1,7 @@
 -- Storage buckets for images and reports
 
 INSERT INTO storage.buckets (id, name, public) VALUES
-  ('offering-images', 'offering-images', false),
+  ('offering-images', 'offering-images', true),
   ('reports', 'reports', false);
 
 -- Storage policies: authenticated users can upload/read images
