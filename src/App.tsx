@@ -4,6 +4,8 @@ import { AuthProvider, useAuth } from '@/lib/auth-context'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/pages/Login'
 import { DashboardPage } from '@/pages/Dashboard'
+import { OfferingsPage } from '@/pages/Offerings'
+import { ReviewPage } from '@/pages/Review'
 import { Loader2 } from 'lucide-react'
 
 const queryClient = new QueryClient({
@@ -34,8 +36,8 @@ function AuthGate() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<DashboardPage />} />
-        <Route path="offerings" element={<Placeholder title="Offerings" />} />
-        <Route path="review" element={<Placeholder title="Review" />} />
+        <Route path="offerings" element={<OfferingsPage />} />
+        <Route path="review" element={<ReviewPage />} />
         <Route path="reports" element={<Placeholder title="Reports" />} />
         <Route path="settings" element={<Placeholder title="Settings" />} />
         <Route path="users" element={<Placeholder title="Users" />} />
