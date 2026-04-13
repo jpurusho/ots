@@ -53,10 +53,16 @@ const SECTION_LABELS: Record<string, { label: string; catKey: string }> = {
 
 const DENOM_ORDER = ['100', '50', '20', '10', '5', '2', '1']
 
-function parseScanData(raw: string | null): ScanData | null {
+function parseScanData(raw: string | Record<string, unknown> | null): ScanData | null {
   if (!raw) return null
   try {
-    return typeof raw === 'string' ? JSON.parse(raw) : raw
+    if (typeof raw === 'string') {
+      const parsed = JSON.parse(raw)
+      // Handle double-encoded JSON (string inside string)
+      if (typeof parsed === 'string') return JSON.parse(parsed) as ScanData
+      return parsed as ScanData
+    }
+    return raw as unknown as ScanData
   } catch {
     return null
   }
@@ -389,8 +395,15 @@ export function ReviewPage() {
       misc: selected.misc,
       notes: selected.notes || '',
     })
-    // Initialize editable sections from scan_data
-    setEditSections(scanData?.sections ? { ...scanData.sections } : {})
+    // Initialize editable sections from scan_data (re-parse to ensure fresh)
+    const freshScanData = parseScanData(selected.scan_data)
+    const sections: Record<string, ScanSection> = {}
+    if (freshScanData?.sections) {
+      for (const [k, v] of Object.entries(freshScanData.sections)) {
+        sections[k] = { ...v }
+      }
+    }
+    setEditSections(sections)
     setEditMode(true)
   }
 
