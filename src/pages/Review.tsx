@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
+import { logActivity } from '@/lib/activity'
 import {
   CheckCircle, Loader2, ChevronLeft, ChevronRight,
   Eye, Pencil, Save, RotateCcw, Trash2, FileText,
@@ -184,6 +185,9 @@ export function ReviewPage() {
         })
         .eq('id', id)
       if (error) throw error
+      const o = offerings?.find(o => o.id === id)
+      logActivity(appUser?.email || null, 'approve',
+        `Approved ${o?.filename || `offering #${id}`}`, 'offering', id)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['offerings'] })
@@ -199,6 +203,9 @@ export function ReviewPage() {
         .update({ status: 'discarded', locked: 2, locked_at: new Date().toISOString() })
         .eq('id', id)
       if (error) throw error
+      const o = offerings?.find(o => o.id === id)
+      logActivity(appUser?.email || null, 'discard',
+        `Discarded ${o?.filename || `offering #${id}`}`, 'offering', id)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['offerings'] })

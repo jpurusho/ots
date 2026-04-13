@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 import { Save, Loader2, CheckCircle, PenLine } from 'lucide-react'
+import { logActivity } from '@/lib/activity'
 
 export function ManualEntryPage() {
   const { appUser } = useAuth()
@@ -40,6 +41,8 @@ export function ManualEntryPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['offerings'] })
+      logActivity(appUser?.email || null, 'manual_entry',
+        `Manual entry for ${form.offering_date} — $${total.toFixed(2)}`, 'offering')
       setSaved(true)
       setForm({
         offering_date: new Date().toISOString().split('T')[0],

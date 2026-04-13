@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
+import { logActivity } from '@/lib/activity'
 import {
   Upload, X, FileImage, FileText, CheckCircle, XCircle,
   ArrowRight, ImagePlus, Sparkles,
@@ -135,6 +136,10 @@ export function OfferingsPage() {
         } catch {
           // Scan failed but upload succeeded — user can rescan from Review
         }
+
+        logActivity(appUser?.email || null, 'upload',
+          `Uploaded ${file.name}${scanned ? ` — scanned $${scanTotal.toFixed(2)}` : ''}`,
+          'offering', offering.id)
 
         allResults.push({
           filename: file.name,
