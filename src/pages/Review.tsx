@@ -119,7 +119,7 @@ export function ReviewPage() {
       const { data, error } = await supabase
         .from('offerings')
         .select('*')
-        .in('status', ['uploaded', 'scanned', 'pending'])
+        .in('status', ['uploaded', 'scanned', 'pending', 'scan_error'])
         .order('created_at', { ascending: false })
       if (error) throw error
       return data as Offering[]
