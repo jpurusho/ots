@@ -161,6 +161,59 @@ async def scan_offering(req: ScanRequest):
 
     supabase.table("offerings").update(update).eq("id", req.offering_id).execute()
 
+    # Create offering_checks records if this is a bank check image
+    # Check images have notes like "Check #2001 from Thomas Abraham - Building Fund"
+    import re
+    check_records_created = 0
+    notes_text = item.get("notes") or item.get("clean_notes") or ""
+    raw_notes = ""
+    if isinstance(scan_data, dict):
+        raw_notes = scan_data.get("notes", "") or ""
+
+    combined_notes = f"{notes_text} {raw_notes}"
+
+    # Look for check pattern in notes
+    check_match = re.search(
+        r'[Cc]heck\s*#?\s*(\d+)\s*(?:from|by)\s+([^-–—\n]+?)(?:\s*[-–—]\s*(.+?))?(?:\.|$)',
+        combined_notes
+    )
+
+    if check_match:
+        check_number = check_match.group(1)
+        payer_name = check_match.group(2).strip()
+        memo = (check_match.group(3) or "").strip()
+
+        # Determine category and amount from the offering
+        check_amount = 0
+        check_category = "general"
+        if categories.get("building_fund") and categories["building_fund"] > 0:
+            check_amount = categories["building_fund"]
+            check_category = "building_fund"
+        elif categories.get("general") and categories["general"] > 0:
+            check_amount = categories["general"]
+            check_category = "general"
+
+        if payer_name and check_amount > 0:
+            import hashlib
+            content_hash = hashlib.md5(
+                f"{check_number}:{payer_name}:{check_amount}".encode()
+            ).hexdigest()
+
+            try:
+                supabase.table("offering_checks").upsert({
+                    "offering_id": req.offering_id,
+                    "check_number": check_number,
+                    "payer_name": payer_name,
+                    "memo": memo or None,
+                    "amount": check_amount,
+                    "category": check_category,
+                    "content_hash": content_hash,
+                    "image_filename": offering.get("filename"),
+                }, on_conflict="content_hash").execute()
+                check_records_created = 1
+            except Exception as e:
+                print(f"[Scan] Failed to create check record: {e}")
+
     return {
         "success": True,
         "offering_id": req.offering_id,
@@ -168,6 +221,7 @@ async def scan_offering(req: ScanRequest):
         "total": item.get("computed_total", 0),
         "categories": categories,
         "slips_found": len(results),
+        "checks_created": check_records_created,
     }
 
 

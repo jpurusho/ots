@@ -1,88 +1,85 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Loader2, Receipt } from 'lucide-react'
+import { Loader2, Receipt, Users, DollarSign, Wallet } from 'lucide-react'
 
-interface CheckEntry {
+interface Check {
+  id: number
   offering_id: number
-  offering_date: string | null
-  filename: string | null
-  category: string
-  amount: number
-  count: number
+  check_number: string | null
+  payer_name: string | null
+  bank_name: string | null
+  account_number_last4: string | null
+  memo: string | null
+  amount: number | null
+  category: string | null
+  created_at: string
+}
+
+interface Contributor {
+  payer_name: string
   total: number
-}
-
-interface ScanSection {
-  items?: Array<{ amount: number; count: number }>
-  total?: number
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  general_checks: 'General',
-  building_fund_checks: 'Building Fund',
-  other_checks: 'Miscellaneous',
+  count: number
+  categories: Record<string, number>
 }
 
 export function ChecksPage() {
-  const { data: checkEntries, isLoading } = useQuery({
-    queryKey: ['checks-from-scan-data'],
+  const [tab, setTab] = useState<'checks' | 'contributors' | 'statements'>('checks')
+  const [statementsYear, setStatementsYear] = useState(new Date().getFullYear())
+
+  // Fetch checks joined with offering date
+  const { data: checks, isLoading } = useQuery({
+    queryKey: ['offering-checks'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('offerings')
-        .select('id, offering_date, filename, scan_data')
-        .eq('status', 'approved')
-        .order('offering_date', { ascending: false })
+        .from('offering_checks')
+        .select('*, offerings!inner(offering_date, status)')
+        .order('created_at', { ascending: false })
       if (error) throw error
-
-      const entries: CheckEntry[] = []
-      for (const offering of (data || [])) {
-        let sd = offering.scan_data
-        if (!sd) continue
-        if (typeof sd === 'string') {
-          try { sd = JSON.parse(sd) } catch { continue }
-        }
-        const sections = (sd as Record<string, unknown>)?.sections as Record<string, ScanSection> | undefined
-        if (!sections) continue
-
-        for (const [sectionKey, section] of Object.entries(sections)) {
-          if (!sectionKey.includes('checks') || !section.items) continue
-          for (const item of section.items) {
-            if (!item.amount || item.amount <= 0) continue
-            entries.push({
-              offering_id: offering.id,
-              offering_date: offering.offering_date,
-              filename: offering.filename,
-              category: CATEGORY_LABELS[sectionKey] || sectionKey,
-              amount: item.amount,
-              count: item.count || 1,
-              total: (item.amount || 0) * (item.count || 1),
-            })
-          }
-        }
-      }
-      return entries
+      return (data || []).map((c: any) => ({
+        ...c,
+        offering_date: c.offerings?.offering_date || null,
+        offering_status: c.offerings?.status || null,
+      })) as (Check & { offering_date: string | null; offering_status: string | null })[]
     },
   })
 
-  const allChecks = checkEntries || []
+  const allChecks = checks || []
+  const totalAmount = allChecks.reduce((s, c) => s + (c.amount || 0), 0)
 
-  // Summary by category
-  const categoryTotals = new Map<string, number>()
+  // Build contributor summary
+  const contributorMap = new Map<string, Contributor>()
   for (const c of allChecks) {
-    categoryTotals.set(c.category, (categoryTotals.get(c.category) || 0) + c.total)
-  }
-
-  // Summary by date
-  const dateTotals = new Map<string, { count: number; total: number }>()
-  for (const c of allChecks) {
-    const date = c.offering_date || 'Unknown'
-    const existing = dateTotals.get(date) || { count: 0, total: 0 }
+    const name = c.payer_name || 'Unknown'
+    const existing = contributorMap.get(name) || { payer_name: name, total: 0, count: 0, categories: {} }
+    existing.total += c.amount || 0
     existing.count += 1
-    existing.total += c.total
-    dateTotals.set(date, existing)
+    const cat = c.category || 'general'
+    existing.categories[cat] = (existing.categories[cat] || 0) + (c.amount || 0)
+    contributorMap.set(name, existing)
   }
+  const contributors = [...contributorMap.values()].sort((a, b) => b.total - a.total)
 
-  const grandTotal = allChecks.reduce((sum, c) => sum + c.total, 0)
+  // Year-end statements
+  const yearChecks = allChecks.filter(c => {
+    const d = c.offering_date
+    if (!d) return false
+    const yearMatch = d.match(/(\d{4})/)
+    return yearMatch && parseInt(yearMatch[1]) === statementsYear
+  })
+  const yearContributorMap = new Map<string, { payer_name: string; total: number; count: number; firstDate: string; lastDate: string }>()
+  for (const c of yearChecks) {
+    const name = c.payer_name || 'Unknown'
+    const existing = yearContributorMap.get(name) || { payer_name: name, total: 0, count: 0, firstDate: c.offering_date || '', lastDate: c.offering_date || '' }
+    existing.total += c.amount || 0
+    existing.count += 1
+    if (c.offering_date && c.offering_date < existing.firstDate) existing.firstDate = c.offering_date
+    if (c.offering_date && c.offering_date > existing.lastDate) existing.lastDate = c.offering_date
+    yearContributorMap.set(name, existing)
+  }
+  const yearStatements = [...yearContributorMap.values()].sort((a, b) => b.total - a.total)
+
+  const fmt = (n: number) => `$${n.toFixed(2)}`
 
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
@@ -91,94 +88,157 @@ export function ChecksPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Checks</h1>
-        <p className="text-muted text-sm">Check entries extracted from offering scans</p>
+        <h1 className="text-2xl font-bold">Check Contributions</h1>
+        <p className="text-muted text-sm">Track individual check contributions and generate year-end statements</p>
       </div>
 
       {allChecks.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-10 text-center">
           <Receipt className="w-10 h-10 mx-auto text-muted mb-3" />
-          <p className="text-muted">No check entries yet</p>
-          <p className="text-xs text-muted mt-1">Check entries are extracted when scanning offering images</p>
+          <p className="text-muted font-medium">No check contributions yet</p>
+          <p className="text-xs text-muted mt-2 max-w-md mx-auto">
+            Check contributions are recorded when you scan bank check images.
+            Upload photos of individual checks in the Offerings page — the AI will extract
+            payer name, check number, amount, and memo automatically.
+          </p>
         </div>
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-lg border border-border bg-card p-3 text-center">
-              <p className="text-[10px] text-muted uppercase tracking-wider">Total Checks</p>
-              <p className="text-lg font-bold">{allChecks.length}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-3 text-center">
-              <p className="text-[10px] text-muted uppercase tracking-wider">Grand Total</p>
-              <p className="text-lg font-bold text-primary">${grandTotal.toFixed(2)}</p>
-            </div>
-            {[...categoryTotals.entries()].map(([cat, total]) => (
-              <div key={cat} className="rounded-lg border border-border bg-card p-3 text-center">
-                <p className="text-[10px] text-muted uppercase tracking-wider">{cat}</p>
-                <p className="text-lg font-bold">${total.toFixed(2)}</p>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center gap-2 text-muted text-sm mb-1">
+                <Wallet className="w-4 h-4" /> Total Checks
               </div>
+              <p className="text-xl font-bold">{allChecks.length}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center gap-2 text-muted text-sm mb-1">
+                <DollarSign className="w-4 h-4" /> Total Amount
+              </div>
+              <p className="text-xl font-bold text-primary">{fmt(totalAmount)}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center gap-2 text-muted text-sm mb-1">
+                <Users className="w-4 h-4" /> Contributors
+              </div>
+              <p className="text-xl font-bold">{contributors.length}</p>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-border">
+            {(['checks', 'contributors', 'statements'] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer capitalize ${
+                  tab === t ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-foreground'
+                }`}>
+                {t === 'statements' ? 'Year-End' : t === 'checks' ? 'All Checks' : 'Contributors'}
+              </button>
             ))}
           </div>
 
-          {/* By date */}
-          <div className="rounded-xl border border-border overflow-hidden">
-            <div className="px-4 py-3 bg-card border-b border-border">
-              <h3 className="text-sm font-medium">By Week ({dateTotals.size} weeks)</h3>
-            </div>
-            <div className="divide-y divide-border">
-              {[...dateTotals.entries()].map(([date, info]) => (
-                <div key={date} className="px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{date}</p>
-                    <p className="text-xs text-muted">{info.count} check{info.count !== 1 ? 's' : ''}</p>
-                  </div>
-                  <p className="text-sm font-bold">${info.total.toFixed(2)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* All checks table */}
-          <div className="rounded-xl border border-border overflow-hidden">
-            <div className="px-4 py-3 bg-card border-b border-border">
-              <h3 className="text-sm font-medium">All Check Entries ({allChecks.length})</h3>
-            </div>
-            <div className="overflow-x-auto">
+          {tab === 'checks' && (
+            <div className="rounded-xl border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-card border-b border-border">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted">Payer</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted">Check #</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted">Date</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted">Source</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted">Category</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted">Memo</th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-muted">Amount</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-muted">Count</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-muted">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {allChecks.map((c, i) => (
-                    <tr key={i} className="hover:bg-muted-foreground/5">
-                      <td className="px-4 py-2">{c.offering_date || '—'}</td>
-                      <td className="px-4 py-2 text-muted text-xs">{c.filename || '—'}</td>
+                  {allChecks.map(c => (
+                    <tr key={c.id} className="hover:bg-muted-foreground/5">
+                      <td className="px-4 py-2 font-medium">{c.payer_name || 'Unknown'}</td>
+                      <td className="px-4 py-2 text-muted">{c.check_number || '—'}</td>
+                      <td className="px-4 py-2 text-xs">{c.offering_date || '—'}</td>
                       <td className="px-4 py-2">
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-muted-foreground/10">{c.category}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-muted-foreground/10 capitalize">
+                          {(c.category || 'general').replace('_', ' ')}
+                        </span>
                       </td>
-                      <td className="px-4 py-2 text-right">${c.amount.toFixed(2)}</td>
-                      <td className="px-4 py-2 text-right">{c.count}</td>
-                      <td className="px-4 py-2 text-right font-bold">${c.total.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-xs text-muted">{c.memo || '—'}</td>
+                      <td className="px-4 py-2 text-right font-bold">{fmt(c.amount || 0)}</td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
-                  <tr className="bg-card border-t-2 border-border font-bold">
-                    <td colSpan={5} className="px-4 py-3">Total</td>
-                    <td className="px-4 py-3 text-right text-primary">${grandTotal.toFixed(2)}</td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
-          </div>
+          )}
+
+          {tab === 'contributors' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {contributors.map(c => (
+                <div key={c.payer_name} className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{c.payer_name}</p>
+                      <p className="text-xs text-muted">{c.count} check{c.count !== 1 ? 's' : ''}</p>
+                    </div>
+                    <p className="font-bold">{fmt(c.total)}</p>
+                  </div>
+                  <div className="flex gap-3 mt-2">
+                    {Object.entries(c.categories).map(([cat, amount]) => (
+                      <span key={cat} className="text-xs text-muted capitalize">
+                        {cat.replace('_', ' ')}: {fmt(amount)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'statements' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <select value={statementsYear} onChange={e => setStatementsYear(Number(e.target.value))}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background">
+                  {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <span className="text-sm text-muted">{yearStatements.length} contributors</span>
+              </div>
+              {yearStatements.length === 0 ? (
+                <div className="p-8 text-center text-sm text-muted">No check contributions for {statementsYear}</div>
+              ) : (
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-card border-b border-border">
+                        <th className="px-4 py-2 text-left text-xs font-medium text-muted">Contributor</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-muted">Checks</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-muted">Period</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-muted">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {yearStatements.map(s => (
+                        <tr key={s.payer_name} className="hover:bg-muted-foreground/5">
+                          <td className="px-4 py-2 font-medium">{s.payer_name}</td>
+                          <td className="px-4 py-2 text-center text-muted">{s.count}</td>
+                          <td className="px-4 py-2 text-xs text-muted">{s.firstDate} — {s.lastDate}</td>
+                          <td className="px-4 py-2 text-right font-bold">{fmt(s.total)}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-card border-t-2 border-border font-bold">
+                        <td className="px-4 py-2">Total</td>
+                        <td className="px-4 py-2 text-center">{yearStatements.reduce((s, r) => s + r.count, 0)}</td>
+                        <td />
+                        <td className="px-4 py-2 text-right text-primary">
+                          {fmt(yearStatements.reduce((s, r) => s + r.total, 0))}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
