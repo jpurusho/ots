@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/types/supabase'
@@ -20,24 +20,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [appUser, setAppUser] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const initialized = useRef(false)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      if (session?.user) {
-        loadAppUser(session.user.email!)
-      } else {
-        setLoading(false)
-      }
-    })
+    if (initialized.current) return
+    initialized.current = true
 
-    // Listen for auth changes
+    // Safety timeout — if auth takes more than 5 seconds, stop loading
+    const timeout = setTimeout(() => {
+      setLoading(false)
+    }, 5000)
+
+    // Listen for auth changes FIRST (catches OAuth redirects)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session)
-        if (session?.user) {
-          await loadAppUser(session.user.email!)
+      async (event, s) => {
+        console.log('[Auth] state change:', event, s?.user?.email)
+        setSession(s)
+        if (s?.user?.email) {
+          await loadAppUser(s.user.email, s)
         } else {
           setAppUser(null)
           setLoading(false)
@@ -45,10 +45,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    // Then check for existing session
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      console.log('[Auth] getSession:', s?.user?.email || 'no session')
+      if (s?.user?.email) {
+        setSession(s)
+        loadAppUser(s.user.email, s)
+      } else {
+        // No session — show login
+        setLoading(false)
+      }
+    })
+
+    return () => {
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
-  async function loadAppUser(email: string) {
+  async function loadAppUser(email: string, currentSession: Session) {
     try {
       const { data, error } = await supabase
         .from('app_users')
@@ -57,39 +72,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (error && error.code === 'PGRST116') {
-        // User not found — check if this is the first user (auto-promote to admin)
+        // Not found — create user, first user becomes admin
         const { count } = await supabase
           .from('app_users')
           .select('*', { count: 'exact', head: true })
 
         const role = count === 0 ? 'admin' : 'operator'
-        const { data: newUser } = await supabase
+        const user = currentSession.user
+
+        const { data: newUser, error: insertError } = await supabase
           .from('app_users')
           .insert({
-            auth_id: session?.user?.id ?? null,
+            auth_id: user.id,
             email,
-            name: session?.user?.user_metadata?.full_name ?? email.split('@')[0],
-            picture: session?.user?.user_metadata?.avatar_url ?? null,
+            name: user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0],
+            picture: user.user_metadata?.avatar_url || null,
             role,
             is_active: true,
+            last_login: new Date().toISOString(),
           })
           .select()
           .single()
 
-        setAppUser(newUser)
-      } else if (data) {
-        // Update auth_id and last_login if needed
-        if (!data.auth_id && session?.user?.id) {
-          await supabase
-            .from('app_users')
-            .update({ auth_id: session.user.id, last_login: new Date().toISOString() })
-            .eq('email', email)
+        if (insertError) {
+          console.error('[Auth] insert app_user failed:', insertError)
+        } else {
+          setAppUser(newUser)
         }
+      } else if (error) {
+        console.error('[Auth] query app_user failed:', error)
+      } else if (data) {
         setAppUser(data)
+        // Update last_login in background
+        supabase
+          .from('app_users')
+          .update({
+            auth_id: data.auth_id || currentSession.user.id,
+            last_login: new Date().toISOString(),
+          })
+          .eq('email', email)
+          .then(() => {})
       }
-    } catch {
-      // App users table may not exist yet during initial setup
-      setAppUser(null)
+    } catch (err) {
+      console.error('[Auth] loadAppUser error:', err)
     } finally {
       setLoading(false)
     }
