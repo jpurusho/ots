@@ -5,6 +5,8 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // GitHub Pages serves from /ots/ path. Use '/' for custom domain or local dev.
+  base: process.env.GITHUB_ACTIONS ? '/ots/' : '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
