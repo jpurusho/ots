@@ -45,7 +45,7 @@ def get_claude_client() -> anthropic.Anthropic:
 
 def get_model_id() -> str:
     if USE_BEDROCK:
-        return "us.anthropic.claude-sonnet-4-6-v1"
+        return "us.anthropic.claude-sonnet-4-6"
     return os.getenv("SCANNER_MODEL", "claude-sonnet-4-6-20250929")
 
 
