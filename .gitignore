@@ -1,3 +1,11 @@
+# Node
+node_modules/
+dist/
+
+# Supabase local
+supabase/.temp/
+supabase/.branches/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
