@@ -22,7 +22,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/  — commented out: conflicts with src/lib/ in TypeScript projects
 lib64/
 parts/
 sdist/
