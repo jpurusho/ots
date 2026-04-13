@@ -4,13 +4,17 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 import {
   Upload, X, FileImage, FileText, CheckCircle, XCircle,
-  ArrowRight, ImagePlus,
+  ArrowRight, ImagePlus, Sparkles,
 } from 'lucide-react'
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 interface UploadResult {
   filename: string
   success: boolean
   offering_id?: number
+  scanned?: boolean
+  scan_total?: number
   error?: string
 }
 
@@ -109,10 +113,28 @@ export function OfferingsPage() {
 
         if (dbError) throw dbError
 
+        // Auto-scan via backend
+        let scanned = false
+        let scanTotal = 0
+        try {
+          const scanResp = await fetch(`${BACKEND_URL}/api/scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ offering_id: offering.id }),
+          })
+          const scanData = await scanResp.json()
+          scanned = scanData.success === true
+          scanTotal = scanData.total || 0
+        } catch {
+          // Scan failed but upload succeeded — user can rescan from Review
+        }
+
         allResults.push({
           filename: file.name,
           success: true,
           offering_id: offering.id,
+          scanned,
+          scan_total: scanTotal,
         })
       } catch (err) {
         allResults.push({
@@ -169,7 +191,10 @@ export function OfferingsPage() {
       {uploading && files.length > 0 && (
         <div className="rounded-xl border border-primary/30 bg-card p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Uploading...</span>
+            <span className="text-sm font-medium flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              Uploading & Scanning...
+            </span>
             <span className="text-xs text-muted">{uploadCurrent} / {files.length}</span>
           </div>
           <div className="h-1.5 bg-border rounded-full overflow-hidden">
@@ -248,9 +273,14 @@ export function OfferingsPage() {
                     {result.error && (
                       <p className="text-xs text-destructive mt-0.5">{result.error}</p>
                     )}
-                    {result.success && (
-                      <p className="text-xs text-muted mt-0.5">
-                        Uploaded — ready for scanning
+                    {result.success && result.scanned && (
+                      <p className="text-xs text-success mt-0.5">
+                        Scanned — ${result.scan_total?.toFixed(2)} total
+                      </p>
+                    )}
+                    {result.success && !result.scanned && (
+                      <p className="text-xs text-warning mt-0.5">
+                        Uploaded — scan pending (try from Review)
                       </p>
                     )}
                   </div>
