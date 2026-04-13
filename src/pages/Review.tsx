@@ -62,45 +62,118 @@ function parseScanData(raw: string | null): ScanData | null {
   }
 }
 
-function SectionBreakdown({ sectionKey, section }: { sectionKey: string; section: ScanSection }) {
+interface SectionBreakdownProps {
+  sectionKey: string
+  section: ScanSection
+  editing?: boolean
+  onUpdate?: (updated: ScanSection) => void
+}
+
+function SectionBreakdown({ sectionKey, section, editing, onUpdate }: SectionBreakdownProps) {
   const isDenom = !!section.denominations
   const label = SECTION_LABELS[sectionKey]?.label || sectionKey
+
+  const computeTotal = (sec: ScanSection) => {
+    if (sec.denominations) {
+      return DENOM_ORDER.reduce((sum, d) => sum + (parseInt(d) * (sec.denominations![d] || 0)), 0)
+    }
+    if (sec.items) {
+      return sec.items.reduce((sum, item) => sum + (item.amount || 0) * (item.count || 1), 0)
+    }
+    return sec.total || 0
+  }
+
+  const currentTotal = computeTotal(section)
+
+  const updateDenom = (denom: string, count: number) => {
+    if (!onUpdate) return
+    const updated = { ...section, denominations: { ...section.denominations!, [denom]: count } }
+    updated.total = computeTotal(updated)
+    onUpdate(updated)
+  }
+
+  const updateItem = (index: number, field: 'amount' | 'count', value: number) => {
+    if (!onUpdate || !section.items) return
+    const items = [...section.items]
+    items[index] = { ...items[index], [field]: value }
+    const updated = { ...section, items, total: items.reduce((s, i) => s + (i.amount || 0) * (i.count || 1), 0) }
+    onUpdate(updated)
+  }
+
+  const addItem = () => {
+    if (!onUpdate) return
+    const items = [...(section.items || []), { amount: 0, count: 1 }]
+    onUpdate({ ...section, items, total: items.reduce((s, i) => s + (i.amount || 0) * (i.count || 1), 0) })
+  }
+
+  const removeItem = (index: number) => {
+    if (!onUpdate || !section.items) return
+    const items = section.items.filter((_, i) => i !== index)
+    onUpdate({ ...section, items, total: items.reduce((s, i) => s + (i.amount || 0) * (i.count || 1), 0) })
+  }
 
   return (
     <div className="rounded-lg border border-border/50 bg-background/50 p-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-muted">{label}</span>
-        <span className="text-sm font-bold">${(section.total || 0).toFixed(2)}</span>
+        <span className="text-sm font-bold">${currentTotal.toFixed(2)}</span>
       </div>
 
       {isDenom && section.denominations && (
-        <div className="grid grid-cols-4 gap-1 text-xs">
+        <div className="space-y-0.5">
           {DENOM_ORDER.map(d => {
-            const count = section.denominations![d]
-            if (!count || count === 0) return null
+            const count = section.denominations![d] || 0
+            if (!editing && count === 0) return null
             return (
-              <div key={d} className="flex justify-between px-1.5 py-0.5 bg-card rounded">
-                <span className="text-muted">${d}</span>
-                <span>&times;{count} = <strong>${parseInt(d) * count}</strong></span>
+              <div key={d} className="flex items-center justify-between px-1.5 py-0.5 bg-card rounded text-xs">
+                <span className="text-muted w-8">${d}</span>
+                <span className="flex items-center gap-1">
+                  &times;
+                  {editing ? (
+                    <input type="number" min="0" value={count}
+                      onChange={e => updateDenom(d, parseInt(e.target.value) || 0)}
+                      className="w-12 px-1 py-0.5 text-center rounded border border-border bg-background text-xs" />
+                  ) : (
+                    <span>{count}</span>
+                  )}
+                  <span>= <strong>${(parseInt(d) * count).toFixed(0)}</strong></span>
+                </span>
               </div>
             )
           })}
         </div>
       )}
 
-      {!isDenom && section.items && section.items.length > 0 && (
-        <div className="space-y-0.5 text-xs">
+      {!isDenom && section.items && (
+        <div className="space-y-0.5">
           {section.items.map((item, i) => (
-            <div key={i} className="flex justify-between px-1.5 py-0.5 bg-card rounded">
-              <span className="text-muted">#{i + 1}</span>
-              <span>${item.amount} &times; {item.count} = <strong>${item.amount * item.count}</strong></span>
+            <div key={i} className="flex items-center gap-1 px-1.5 py-0.5 bg-card rounded text-xs">
+              <span className="text-muted w-5">#{i + 1}</span>
+              {editing ? (
+                <>
+                  <span>$</span>
+                  <input type="number" min="0" step="0.01" value={item.amount || ''}
+                    onChange={e => updateItem(i, 'amount', parseFloat(e.target.value) || 0)}
+                    className="w-16 px-1 py-0.5 rounded border border-border bg-background text-xs" />
+                  <span>&times;</span>
+                  <input type="number" min="1" value={item.count || 1}
+                    onChange={e => updateItem(i, 'count', parseInt(e.target.value) || 1)}
+                    className="w-10 px-1 py-0.5 text-center rounded border border-border bg-background text-xs" />
+                  <span>= <strong>${((item.amount || 0) * (item.count || 1)).toFixed(0)}</strong></span>
+                  <button onClick={() => removeItem(i)} className="ml-auto text-muted hover:text-destructive cursor-pointer text-[10px]">&times;</button>
+                </>
+              ) : (
+                <span className="ml-auto">${item.amount} &times; {item.count} = <strong>${(item.amount * item.count).toFixed(0)}</strong></span>
+              )}
             </div>
           ))}
+          {editing && (
+            <button onClick={addItem}
+              className="w-full text-[10px] text-primary hover:underline cursor-pointer py-0.5">
+              + Add entry
+            </button>
+          )}
         </div>
-      )}
-
-      {section.expr && (
-        <p className="text-[10px] text-muted mt-1 font-mono">{section.expr}</p>
       )}
     </div>
   )
@@ -133,8 +206,17 @@ export function ReviewPage() {
     },
   })
 
-  const selected = offerings?.find(o => o.id === selectedId) || offerings?.[0] || null
+  // When selectedId doesn't match any offering in current view, auto-select first
+  const matchedOffering = offerings?.find(o => o.id === selectedId)
+  const selected = matchedOffering || offerings?.[0] || null
   const scanData = parseScanData(selected?.scan_data ?? null)
+
+  // Auto-select first offering when view changes and no match
+  useEffect(() => {
+    if (offerings && offerings.length > 0 && !matchedOffering) {
+      setSelectedId(offerings[0].id)
+    }
+  }, [offerings, matchedOffering])
 
   // Image zoom state
   const [zoom, setZoom] = useState(1)
@@ -226,7 +308,23 @@ export function ReviewPage() {
   })
 
   const saveMutation = useMutation({
-    mutationFn: async ({ id, values }: { id: number; values: Partial<Offering> }) => {
+    mutationFn: async ({ id, values, sections }: { id: number; values: Partial<Offering>; sections: Record<string, ScanSection> }) => {
+      // Rebuild scan_data from edited sections
+      const updatedScanData: Record<string, unknown> = {
+        sections,
+        categories: {},
+        total: 0,
+      }
+      let total = 0
+      for (const [sk, sec] of Object.entries(sections)) {
+        const catKey = SECTION_LABELS[sk]?.catKey
+        if (catKey && sec.total) {
+          (updatedScanData.categories as Record<string, unknown>)[catKey] = { value: sec.total }
+          total += sec.total
+        }
+      }
+      updatedScanData.total = total
+
       const { error } = await supabase
         .from('offerings')
         .update({
@@ -237,6 +335,7 @@ export function ReviewPage() {
           building_fund: values.building_fund,
           misc: values.misc,
           notes: values.notes,
+          scan_data: Object.keys(sections).length > 0 ? JSON.stringify(updatedScanData) : undefined,
           modified_at: new Date().toISOString(),
         })
         .eq('id', id)
@@ -268,6 +367,18 @@ export function ReviewPage() {
     },
   })
 
+  // Editable scan sections (line-item editing)
+  const [editSections, setEditSections] = useState<Record<string, ScanSection>>({})
+
+  const updateSection = (sectionKey: string, updated: ScanSection) => {
+    setEditSections(prev => ({ ...prev, [sectionKey]: updated }))
+    // Also update the category total from the section
+    const catKey = SECTION_LABELS[sectionKey]?.catKey
+    if (catKey) {
+      setEditValues(prev => ({ ...prev, [catKey]: updated.total || 0 }))
+    }
+  }
+
   const startEdit = () => {
     if (!selected) return
     setEditValues({
@@ -279,12 +390,14 @@ export function ReviewPage() {
       misc: selected.misc,
       notes: selected.notes || '',
     })
+    // Initialize editable sections from scan_data
+    setEditSections(scanData?.sections ? { ...scanData.sections } : {})
     setEditMode(true)
   }
 
   const handleSave = () => {
     if (!selected) return
-    saveMutation.mutate({ id: selected.id, values: editValues })
+    saveMutation.mutate({ id: selected.id, values: editValues, sections: editSections })
   }
 
   const total = (o: Offering | Partial<Offering>) =>
@@ -451,30 +564,32 @@ export function ReviewPage() {
 
               {/* Amount fields with breakdown */}
               {amountFields.map(({ key, label, sectionKey }) => {
-                const section = scanData?.sections?.[sectionKey]
-                const value = Number(selected[key as keyof Offering]) || 0
+                const section = editMode ? editSections[sectionKey] : scanData?.sections?.[sectionKey]
+                const value = editMode
+                  ? (editValues[key as keyof typeof editValues] as number ?? 0)
+                  : (Number(selected[key as keyof Offering]) || 0)
 
                 return (
                   <div key={key}>
-                    {editMode ? (
+                    {section ? (
+                      <SectionBreakdown
+                        sectionKey={sectionKey}
+                        section={section}
+                        editing={editMode}
+                        onUpdate={editMode ? (updated) => updateSection(sectionKey, updated) : undefined}
+                      />
+                    ) : value > 0 ? (
                       <div>
                         <label className="text-xs text-muted">{label}</label>
-                        <input type="number" step="0.01"
-                          value={editValues[key as keyof typeof editValues] as number ?? 0}
-                          onChange={e => setEditValues(v => ({ ...v, [key]: parseFloat(e.target.value) || 0 }))}
-                          className="w-full mt-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
-                        {/* Show breakdown as reference while editing */}
-                        {section && <SectionBreakdown sectionKey={sectionKey} section={section} />}
-                      </div>
-                    ) : value > 0 || section ? (
-                      section ? (
-                        <SectionBreakdown sectionKey={sectionKey} section={section} />
-                      ) : (
-                        <div>
-                          <label className="text-xs text-muted">{label}</label>
+                        {editMode ? (
+                          <input type="number" step="0.01"
+                            value={value}
+                            onChange={e => setEditValues(v => ({ ...v, [key]: parseFloat(e.target.value) || 0 }))}
+                            className="w-full mt-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+                        ) : (
                           <p className="text-sm font-medium">${value.toFixed(2)}</p>
-                        </div>
-                      )
+                        )}
+                      </div>
                     ) : null}
                   </div>
                 )
