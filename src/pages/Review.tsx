@@ -112,15 +112,18 @@ export function ReviewPage() {
   const [editMode, setEditMode] = useState(false)
   const [editValues, setEditValues] = useState<Partial<Offering>>({})
   const [showNotes, setShowNotes] = useState(false)
+  const [viewMode, setViewMode] = useState<'pending' | 'approved'>('pending')
 
   const { data: offerings, isLoading } = useQuery({
-    queryKey: ['offerings', 'pending'],
+    queryKey: ['offerings', viewMode],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('offerings')
-        .select('*')
-        .in('status', ['uploaded', 'scanned', 'pending', 'scan_error'])
-        .order('created_at', { ascending: false })
+      let query = supabase.from('offerings').select('*')
+      if (viewMode === 'pending') {
+        query = query.in('status', ['uploaded', 'scanned', 'pending', 'scan_error'])
+      } else {
+        query = query.eq('status', 'approved')
+      }
+      const { data, error } = await query.order('created_at', { ascending: false })
       if (error) throw error
       return data as Offering[]
     },
@@ -321,7 +324,21 @@ export function ReviewPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Review</h1>
-          <p className="text-muted text-sm">{offerings.length} offering{offerings.length !== 1 ? 's' : ''} pending</p>
+          <div className="flex items-center gap-2 mt-1">
+            <button onClick={() => { setViewMode('pending'); setSelectedId(null); setEditMode(false) }}
+              className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                viewMode === 'pending' ? 'bg-warning/10 text-warning font-medium' : 'text-muted hover:text-foreground'
+              }`}>
+              Pending
+            </button>
+            <button onClick={() => { setViewMode('approved'); setSelectedId(null); setEditMode(false) }}
+              className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                viewMode === 'approved' ? 'bg-success/10 text-success font-medium' : 'text-muted hover:text-foreground'
+              }`}>
+              Approved
+            </button>
+            <span className="text-xs text-muted ml-1">{offerings.length} offering{offerings.length !== 1 ? 's' : ''}</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={goPrev} disabled={currentIndex <= 0}

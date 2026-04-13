@@ -25,25 +25,41 @@ export function ReportsPage() {
   const [month, setMonth] = useState(now.getMonth())
   const [year, setYear] = useState(now.getFullYear())
 
-  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
-  const endDate = month === 11
-    ? `${year + 1}-01-01`
-    : `${year}-${String(month + 2).padStart(2, '0')}-01`
+  // Parse date strings in various formats (MM/DD/YYYY, YYYY-MM-DD) to Date
+  const parseOfferingDate = (d: string | null): Date | null => {
+    if (!d) return null
+    // MM/DD/YYYY
+    const slashMatch = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (slashMatch) return new Date(+slashMatch[3], +slashMatch[1] - 1, +slashMatch[2])
+    // YYYY-MM-DD
+    const isoMatch = d.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (isoMatch) return new Date(+isoMatch[1], +isoMatch[2] - 1, +isoMatch[3])
+    return null
+  }
 
-  const { data: offerings, isLoading } = useQuery({
-    queryKey: ['offerings', 'approved', year, month],
+  // Fetch all approved, filter by month/year client-side (dates may be MM/DD/YYYY or ISO)
+  const { data: allApproved, isLoading } = useQuery({
+    queryKey: ['offerings', 'approved'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('offerings')
         .select('id, filename, offering_date, general, cash, sunday_school, building_fund, misc, notes, approved_by_email, locked_at')
         .eq('status', 'approved')
-        .gte('offering_date', startDate)
-        .lt('offering_date', endDate)
-        .order('offering_date', { ascending: true })
       if (error) throw error
       return data as ApprovedOffering[]
     },
   })
+
+  const offerings = (allApproved || [])
+    .filter(o => {
+      const d = parseOfferingDate(o.offering_date)
+      return d && d.getMonth() === month && d.getFullYear() === year
+    })
+    .sort((a, b) => {
+      const da = parseOfferingDate(a.offering_date)
+      const db = parseOfferingDate(b.offering_date)
+      return (da?.getTime() || 0) - (db?.getTime() || 0)
+    })
 
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1) }
@@ -67,6 +83,9 @@ export function ReportsPage() {
 
   const formatDate = (d: string | null) => {
     if (!d) return '—'
+    // Already MM/DD/YYYY
+    if (d.includes('/')) return d
+    // ISO: YYYY-MM-DD
     const [y, m, day] = d.split('-')
     return `${m}/${day}/${y}`
   }
