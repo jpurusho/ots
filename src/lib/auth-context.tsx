@@ -1,9 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import type { Database } from '@/types/supabase'
-
-type AppUser = Database['public']['Tables']['app_users']['Row']
+import type { AppUser } from '@/types/database'
 
 interface AuthState {
   session: Session | null

@@ -72,6 +72,13 @@ export function OfferingsPage() {
 
   const handleUpload = async () => {
     if (files.length === 0) return
+
+    // Refresh session to ensure valid JWT (prevents RLS errors after token expiry)
+    const { error: refreshError } = await supabase.auth.refreshSession()
+    if (refreshError) {
+      console.error('[Upload] Session refresh failed:', refreshError)
+    }
+
     setUploading(true)
     setResults([])
     setUploadCurrent(0)
@@ -170,8 +177,7 @@ export function OfferingsPage() {
         onDrop={handleDrop}
         className={`relative border-2 border-dashed rounded-xl p-10 text-center transition-colors ${
           dragActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-        } ${uploading ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
-        onClick={() => !uploading && document.getElementById('file-input')?.click()}
+        } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
       >
         <input
           id="file-input"
@@ -183,7 +189,14 @@ export function OfferingsPage() {
         />
         <ImagePlus className={`w-12 h-12 mx-auto mb-3 ${dragActive ? 'text-primary' : 'text-muted'}`} />
         <p className="font-medium">{dragActive ? 'Drop files here' : 'Drag and drop files here'}</p>
-        <p className="text-sm text-muted mt-1">or click to browse</p>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); document.getElementById('file-input')?.click() }}
+          disabled={uploading}
+          className="mt-2 px-4 py-1.5 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          Browse Files
+        </button>
         <p className="text-xs text-muted mt-2">JPEG, PNG, HEIC, PDF</p>
       </div>
 
