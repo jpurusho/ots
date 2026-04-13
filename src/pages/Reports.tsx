@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { FileText, Download, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { FileText, Download, Loader2, ChevronLeft, ChevronRight, Printer } from 'lucide-react'
 
 interface ApprovedOffering {
   id: number
@@ -190,7 +190,61 @@ export function ReportsPage() {
           <div className="flex gap-3">
             <button
               onClick={() => {
-                // CSV export
+                // PDF export via print window
+                const churchName = 'Offering Report' // TODO: read from app_settings
+                const html = `<!DOCTYPE html>
+<html><head><title>${MONTHS[month]} ${year} - Offering Report</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 40px; color: #111; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  h2 { font-size: 14px; color: #666; font-weight: normal; margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+  th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; text-align: right; }
+  th { text-align: right; font-weight: 600; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #333; }
+  th:first-child, td:first-child { text-align: left; }
+  tfoot td { border-top: 2px solid #333; font-weight: bold; }
+  .summary { display: flex; gap: 24px; margin-top: 20px; font-size: 12px; }
+  .summary div { text-align: center; }
+  .summary .label { color: #666; }
+  .summary .value { font-size: 18px; font-weight: bold; margin-top: 2px; }
+  @media print { body { margin: 20px; } }
+</style></head><body>
+<h1>${churchName}</h1>
+<h2>${MONTHS[month]} ${year}</h2>
+<table>
+  <thead><tr>
+    <th>Date</th><th>General</th><th>Cash</th><th>Sunday School</th><th>Building Fund</th><th>Misc</th><th>Total</th>
+  </tr></thead>
+  <tbody>${offerings.map(o => `<tr>
+    <td style="text-align:left">${formatDate(o.offering_date)}</td>
+    <td>${fmt(o.general)}</td><td>${fmt(o.cash)}</td><td>${fmt(o.sunday_school)}</td>
+    <td>${fmt(o.building_fund)}</td><td>${fmt(o.misc)}</td>
+    <td><strong>$${rowTotal(o).toFixed(2)}</strong></td>
+  </tr>`).join('')}</tbody>
+  <tfoot><tr>
+    <td><strong>Total</strong></td>
+    <td>$${grandTotal.general.toFixed(2)}</td><td>$${grandTotal.cash.toFixed(2)}</td>
+    <td>$${grandTotal.sunday_school.toFixed(2)}</td><td>$${grandTotal.building_fund.toFixed(2)}</td>
+    <td>$${grandTotal.misc.toFixed(2)}</td>
+    <td><strong>$${grandTotalSum.toFixed(2)}</strong></td>
+  </tr></tfoot>
+</table>
+<p style="margin-top:30px;font-size:11px;color:#999">Generated ${new Date().toLocaleDateString()} | OTS v2</p>
+</body></html>`
+                const w = window.open('', '_blank')
+                if (w) {
+                  w.document.write(html)
+                  w.document.close()
+                  setTimeout(() => w.print(), 300)
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              Export PDF
+            </button>
+            <button
+              onClick={() => {
                 const headers = 'Date,General,Cash,Sunday School,Building Fund,Misc,Total\n'
                 const rows = offerings.map(o =>
                   `${o.offering_date || ''},${o.general},${o.cash},${o.sunday_school},${o.building_fund},${o.misc},${rowTotal(o)}`

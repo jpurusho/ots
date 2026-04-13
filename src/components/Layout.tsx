@@ -2,7 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '@/lib/auth-context'
 import {
   LayoutDashboard, Upload, ClipboardCheck, FileText,
-  Settings, Users, Activity, LogOut, PenLine,
+  Settings, Users, Activity, LogOut, PenLine, Receipt,
 } from 'lucide-react'
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/manual-entry', icon: PenLine, label: 'Manual Entry' },
   { to: '/review', icon: ClipboardCheck, label: 'Review' },
   { to: '/reports', icon: FileText, label: 'Reports' },
+  { to: '/checks', icon: Receipt, label: 'Checks' },
 ]
 
 const adminItems = [

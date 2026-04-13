@@ -175,11 +175,7 @@ export function ReviewPage() {
       const { data, error } = await supabase.storage
         .from('offering-images')
         .createSignedUrl(selected.image_path, 3600)
-      if (error) {
-        console.error('[Review] createSignedUrl error:', error)
-        return null
-      }
-      console.log('[Review] signedUrl:', data?.signedUrl)
+      if (error) return null
       return data?.signedUrl || null
     },
     enabled: !!selected?.image_path,
@@ -299,17 +295,7 @@ export function ReviewPage() {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
   }
 
-  if (!offerings || offerings.length === 0) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold">Review</h1>
-        <div className="rounded-xl border border-border bg-card p-10 text-center">
-          <p className="text-muted">No offerings pending review.</p>
-          <a href="/offerings" className="text-primary text-sm mt-2 inline-block hover:underline">Upload offering images</a>
-        </div>
-      </div>
-    )
-  }
+  // Empty state is handled inline below (after the toggle renders)
 
   const amountFields = [
     { key: 'general', label: 'General (Checks)', sectionKey: 'general_checks' },
@@ -337,21 +323,34 @@ export function ReviewPage() {
               }`}>
               Approved
             </button>
-            <span className="text-xs text-muted ml-1">{offerings.length} offering{offerings.length !== 1 ? 's' : ''}</span>
+            <span className="text-xs text-muted ml-1">{offerings?.length || 0} offering{(offerings?.length || 0) !== 1 ? 's' : ''}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={goPrev} disabled={currentIndex <= 0}
-            className="p-2 rounded-lg border border-border hover:bg-muted-foreground/10 disabled:opacity-30 cursor-pointer">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-sm text-muted">{currentIndex + 1} / {offerings.length}</span>
-          <button onClick={goNext} disabled={currentIndex >= offerings.length - 1}
-            className="p-2 rounded-lg border border-border hover:bg-muted-foreground/10 disabled:opacity-30 cursor-pointer">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        {offerings && offerings.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button onClick={goPrev} disabled={currentIndex <= 0}
+              className="p-2 rounded-lg border border-border hover:bg-muted-foreground/10 disabled:opacity-30 cursor-pointer">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm text-muted">{currentIndex + 1} / {offerings.length}</span>
+            <button onClick={goNext} disabled={currentIndex >= offerings.length - 1}
+              className="p-2 rounded-lg border border-border hover:bg-muted-foreground/10 disabled:opacity-30 cursor-pointer">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
+
+      {(!offerings || offerings.length === 0) && (
+        <div className="rounded-xl border border-border bg-card p-10 text-center">
+          <p className="text-muted">
+            {viewMode === 'pending' ? 'No offerings pending review.' : 'No approved offerings yet.'}
+          </p>
+          {viewMode === 'pending' && (
+            <a href="/offerings" className="text-primary text-sm mt-2 inline-block hover:underline">Upload offering images</a>
+          )}
+        </div>
+      )}
 
       {selected && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

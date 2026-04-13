@@ -11,6 +11,7 @@ import { ManualEntryPage } from '@/pages/ManualEntry'
 import { SettingsPage } from '@/pages/Settings'
 import { UsersPage } from '@/pages/Users'
 import { ActivityPage } from '@/pages/Activity'
+import { ChecksPage } from '@/pages/Checks'
 import { Loader2 } from 'lucide-react'
 
 const queryClient = new QueryClient({
@@ -45,6 +46,7 @@ function AuthGate() {
         <Route path="manual-entry" element={<ManualEntryPage />} />
         <Route path="review" element={<ReviewPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="checks" element={<ChecksPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="activity" element={<ActivityPage />} />
