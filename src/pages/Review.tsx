@@ -379,10 +379,19 @@ export function ReviewPage() {
     }
   }
 
+  // Convert MM/DD/YYYY to YYYY-MM-DD for HTML date input
+  const toIsoDate = (d: string | null): string => {
+    if (!d) return ''
+    const slash = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (slash) return `${slash[3]}-${slash[1].padStart(2, '0')}-${slash[2].padStart(2, '0')}`
+    if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.substring(0, 10)
+    return d
+  }
+
   const startEdit = () => {
     if (!selected) return
     setEditValues({
-      offering_date: selected.offering_date || '',
+      offering_date: toIsoDate(selected.offering_date),
       general: selected.general,
       cash: selected.cash,
       sunday_school: selected.sunday_school,
