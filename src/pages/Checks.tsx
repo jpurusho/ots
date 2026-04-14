@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { useAuth } from '@/lib/auth-context'
-import { Loader2, Receipt, Users, DollarSign, Wallet, Printer, ArrowLeft, FileText, Trash2 } from 'lucide-react'
+import { Loader2, Receipt, Users, DollarSign, Wallet, Printer, ArrowLeft, FileText, Trash2, Search, CalendarRange } from 'lucide-react'
 
 interface Check {
   id: number
@@ -85,6 +85,18 @@ export function ChecksPage() {
   })
   const [statementsYear, setStatementsYear] = useState(new Date().getFullYear())
   const [selectedContributor, setSelectedContributor] = useState<string | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [filterText, setFilterText] = useState('')
+
+  const parseDate = (d: string | null): Date | null => {
+    if (!d) return null
+    const slash = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (slash) return new Date(+slash[3], +slash[1] - 1, +slash[2])
+    const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3])
+    return null
+  }
 
   const { data: checks, isLoading } = useQuery({
     queryKey: ['offering-checks'],
@@ -102,10 +114,48 @@ export function ChecksPage() {
     },
   })
 
-  const allChecks = checks || []
+  // Filter checks by date range and search
+  const allChecks = useMemo(() => {
+    let filtered = checks || []
+
+    if (dateFrom || dateTo) {
+      const from = dateFrom ? new Date(dateFrom) : null
+      const to = dateTo ? new Date(dateTo + 'T23:59:59') : null
+      filtered = filtered.filter(c => {
+        const d = parseDate(c.offering_date)
+        if (!d) return false
+        if (from && d < from) return false
+        if (to && d > to) return false
+        return true
+      })
+    }
+
+    if (filterText) {
+      const q = filterText.toLowerCase()
+      filtered = filtered.filter(c =>
+        (c.payer_name || '').toLowerCase().includes(q) ||
+        (c.check_number || '').toLowerCase().includes(q) ||
+        (c.bank_name || '').toLowerCase().includes(q) ||
+        (c.memo || '').toLowerCase().includes(q) ||
+        (c.category || '').toLowerCase().includes(q) ||
+        (c.offering_date || '').toLowerCase().includes(q)
+      )
+    }
+
+    return filtered
+  }, [checks, dateFrom, dateTo, filterText])
+
   const totalAmount = allChecks.reduce((s, c) => s + (c.amount || 0), 0)
 
-  // Build contributors
+  // YTD summary
+  const currentYear = new Date().getFullYear()
+  const ytdChecks = (checks || []).filter(c => {
+    const d = parseDate(c.offering_date)
+    return d && d.getFullYear() === currentYear
+  })
+  const ytdTotal = ytdChecks.reduce((s, c) => s + (c.amount || 0), 0)
+
+  // Build contributors from filtered checks
   const contributorMap = new Map<string, Contributor>()
   for (const c of allChecks) {
     const name = c.payer_name || 'Unknown'
@@ -120,7 +170,7 @@ export function ChecksPage() {
   const contributors = [...contributorMap.values()].sort((a, b) => b.total - a.total)
 
   // Year-end
-  const yearChecks = allChecks.filter(c => {
+  const yearChecks = (checks || []).filter(c => {
     const d = c.offering_date
     if (!d) return false
     const m = d.match(/(\d{4})/)
@@ -295,10 +345,32 @@ export function ChecksPage() {
         </div>
       ) : (
         <>
+          {/* Date range filter */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <CalendarRange className="w-4 h-4 text-muted" />
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              placeholder="From"
+              className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+            <span className="text-xs text-muted">to</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              placeholder="To"
+              className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(''); setDateTo('') }}
+                className="text-xs text-muted hover:text-foreground cursor-pointer">Clear</button>
+            )}
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+              <input type="text" placeholder="Search payer, check #, memo..."
+                value={filterText} onChange={e => setFilterText(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+            </div>
+          </div>
+
           {/* Summary */}
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-center gap-2 text-muted text-sm mb-1"><Wallet className="w-4 h-4" /> Total Checks</div>
+              <div className="flex items-center gap-2 text-muted text-sm mb-1"><Wallet className="w-4 h-4" /> Checks</div>
               <p className="text-xl font-bold">{allChecks.length}</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
@@ -310,6 +382,16 @@ export function ChecksPage() {
               <p className="text-xl font-bold">{contributors.length}</p>
             </div>
           </div>
+
+          {/* YTD summary */}
+          {ytdTotal > 0 && (
+            <div className="rounded-lg border border-border/50 bg-card/50 px-4 py-2.5 flex items-center justify-between">
+              <span className="text-xs text-muted">Year-to-Date ({currentYear}): {ytdChecks.length} checks from {
+                new Set(ytdChecks.map(c => c.payer_name || 'Unknown')).size
+              } contributors</span>
+              <span className="text-xs text-primary font-bold">YTD Total: {fmt(ytdTotal)}</span>
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="flex items-center justify-between">
