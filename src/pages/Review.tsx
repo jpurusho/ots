@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { logActivity } from '@/lib/activity'
 import {
   CheckCircle, Loader2, ChevronLeft, ChevronRight,
-  Eye, Pencil, Save, RotateCcw, Trash2, FileText, RefreshCw,
+  Eye, Pencil, Save, RotateCcw, Trash2, FileText, RefreshCw, Search,
 } from 'lucide-react'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
@@ -196,8 +196,22 @@ export function ReviewPage() {
   const [editValues, setEditValues] = useState<Partial<Offering>>({})
   const [showNotes, setShowNotes] = useState(false)
   const [viewMode, setViewMode] = useState<'pending' | 'approved'>(offeringIdParam ? 'approved' : 'pending')
+  const [filterMonth, setFilterMonth] = useState<number | null>(null) // null = all
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear())
+  const [filterText, setFilterText] = useState('')
 
-  const { data: offerings, isLoading } = useQuery({
+  const parseDate = (d: string | null): Date | null => {
+    if (!d) return null
+    const slash = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (slash) return new Date(+slash[3], +slash[1] - 1, +slash[2])
+    const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3])
+    return null
+  }
+
+  const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+  const { data: rawOfferings, isLoading } = useQuery({
     queryKey: ['offerings', viewMode],
     queryFn: async () => {
       let query = supabase.from('offerings').select('*')
@@ -212,12 +226,42 @@ export function ReviewPage() {
     },
   })
 
+  // Filter by month/year and search text
+  const offerings = useMemo(() => {
+    let filtered = rawOfferings || []
+
+    if (filterMonth !== null) {
+      filtered = filtered.filter(o => {
+        const d = parseDate(o.offering_date)
+        return d && d.getMonth() === filterMonth && d.getFullYear() === filterYear
+      })
+    }
+
+    if (filterText) {
+      const q = filterText.toLowerCase()
+      filtered = filtered.filter(o =>
+        (o.offering_date || '').toLowerCase().includes(q) ||
+        (o.filename || '').toLowerCase().includes(q) ||
+        (o.notes || '').toLowerCase().includes(q)
+      )
+    }
+
+    // Sort by date descending
+    filtered.sort((a, b) => {
+      const da = parseDate(a.offering_date)?.getTime() || 0
+      const db = parseDate(b.offering_date)?.getTime() || 0
+      return db - da
+    })
+
+    return filtered
+  }, [rawOfferings, filterMonth, filterYear, filterText])
+
   // When selectedId doesn't match any offering in current view, auto-select first
   const matchedOffering = offerings?.find(o => o.id === selectedId)
   const selected = matchedOffering || offerings?.[0] || null
   const scanData = parseScanData(selected?.scan_data ?? null)
 
-  // Auto-select first offering when view changes and no match
+  // Auto-select first offering when view/filter changes and no match
   useEffect(() => {
     if (offerings && offerings.length > 0 && !matchedOffering) {
       setSelectedId(offerings[0].id)
@@ -468,11 +512,12 @@ export function ReviewPage() {
 
   return (
     <div className="space-y-4">
+      {/* Header: title + view toggle */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Review</h1>
           <div className="flex items-center gap-2 mt-1">
-            <button onClick={() => { setViewMode('pending'); setSelectedId(null); setEditMode(false) }}
+            <button onClick={() => { setViewMode('pending'); setSelectedId(null); setEditMode(false); setFilterMonth(null) }}
               className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
                 viewMode === 'pending' ? 'bg-warning/10 text-warning font-medium' : 'text-muted hover:text-foreground'
               }`}>
@@ -484,7 +529,6 @@ export function ReviewPage() {
               }`}>
               Approved
             </button>
-            <span className="text-xs text-muted ml-1">{offerings?.length || 0} offering{(offerings?.length || 0) !== 1 ? 's' : ''}</span>
           </div>
         </div>
         {offerings && offerings.length > 0 && (
@@ -501,6 +545,53 @@ export function ReviewPage() {
           </div>
         )}
       </div>
+
+      {/* Filter bar: month pills + search */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setFilterMonth(null)}
+          className={`text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
+            filterMonth === null ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:text-foreground'
+          }`}>All</button>
+        {MONTHS_SHORT.map((m, i) => (
+          <button key={i} onClick={() => { setFilterMonth(i); setFilterYear(new Date().getFullYear()) }}
+            className={`text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
+              filterMonth === i ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:text-foreground'
+            }`}>{m}</button>
+        ))}
+        {filterMonth !== null && (
+          <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}
+            className="text-[10px] px-1.5 py-1 rounded border border-border bg-background">
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        )}
+        <div className="relative flex-1 max-w-[200px] ml-auto">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
+          <input type="text" placeholder="Search..."
+            value={filterText} onChange={e => setFilterText(e.target.value)}
+            className="w-full pl-7 pr-2 py-1 text-xs rounded-lg border border-border bg-background" />
+        </div>
+        <span className="text-[10px] text-muted">{offerings?.length || 0} of {rawOfferings?.length || 0}</span>
+      </div>
+
+      {/* Offering list strip — clickable thumbnails to jump to any offering */}
+      {offerings && offerings.length > 1 && (
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          {offerings.map(o => {
+            const t = (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
+            return (
+              <button key={o.id} onClick={() => { setSelectedId(o.id); setEditMode(false); resetZoom() }}
+                className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] border transition-colors cursor-pointer ${
+                  selected?.id === o.id
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border hover:border-primary/30 text-muted'
+                }`}>
+                <div className="font-medium">{o.offering_date ? (o.offering_date.includes('/') ? o.offering_date : o.offering_date.substring(5)) : o.filename?.substring(0, 10)}</div>
+                {t > 0 && <div className="text-[9px]">${t.toFixed(0)}</div>}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {isLoading && (
         <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
