@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 import { Loader2, Upload, ClipboardCheck, DollarSign, Calendar } from 'lucide-react'
@@ -98,20 +99,20 @@ export function DashboardPage() {
       {/* Stats grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
-          <a key={stat.label} href={stat.href}
+          <Link key={stat.label} to={stat.href}
             className="rounded-xl border border-border bg-card p-5 hover:border-primary/30 transition-colors block">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm text-muted">{stat.label}</p>
               <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
             <p className="text-3xl font-bold">{stat.value}</p>
-          </a>
+          </Link>
         ))}
       </div>
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <a href="/offerings"
+        <Link to="/offerings"
           className="rounded-xl border border-border bg-card p-5 hover:border-primary/30 transition-colors flex items-center gap-4">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
             <Upload className="w-5 h-5 text-primary" />
@@ -120,8 +121,8 @@ export function DashboardPage() {
             <p className="font-medium">Upload Offerings</p>
             <p className="text-sm text-muted">Add new offering slip images</p>
           </div>
-        </a>
-        <a href="/review"
+        </Link>
+        <Link to="/review"
           className="rounded-xl border border-border bg-card p-5 hover:border-primary/30 transition-colors flex items-center gap-4">
           <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
             <ClipboardCheck className="w-5 h-5 text-success" />
@@ -130,7 +131,7 @@ export function DashboardPage() {
             <p className="font-medium">Review & Approve</p>
             <p className="text-sm text-muted">{pendingCount || 0} offerings waiting</p>
           </div>
-        </a>
+        </Link>
       </div>
 
       {/* Recent activity */}

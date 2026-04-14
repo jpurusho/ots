@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useUploadManager } from '@/lib/upload-manager'
+import { Link } from 'react-router-dom'
 import {
   Upload, X, FileImage, FileText, CheckCircle, XCircle,
   ArrowRight, ImagePlus, Sparkles, CloudDownload, Loader2,
@@ -195,10 +196,10 @@ export function OfferingsPage() {
           </div>
           {successCount > 0 && (
             <div className="px-4 py-3 bg-card border-t border-border">
-              <a href="/review"
+              <Link to="/review"
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors">
                 Go to Review <ArrowRight className="w-4 h-4" />
-              </a>
+              </Link>
             </div>
           )}
         </div>

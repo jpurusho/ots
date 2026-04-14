@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
@@ -188,8 +188,10 @@ function SectionBreakdown({ sectionKey, section, editing, onUpdate }: SectionBre
 export function ReviewPage() {
   const { appUser } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const offeringIdParam = searchParams.get('id')
+  const cameFromReports = offeringIdParam !== null
 
   const [selectedId, setSelectedId] = useState<number | null>(offeringIdParam ? parseInt(offeringIdParam) : null)
   const [editMode, setEditMode] = useState(false)
@@ -518,7 +520,15 @@ export function ReviewPage() {
     <div className="space-y-4">
       {/* Header: title + view toggle */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-3">
+          {cameFromReports && (
+            <button onClick={() => navigate('/reports')}
+              className="p-2 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer"
+              title="Back to Reports">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div>
           <h1 className="text-2xl font-bold">Review</h1>
           <div className="flex items-center gap-2 mt-1">
             <button onClick={() => { setViewMode('pending'); setSelectedId(null); setEditMode(false); setFilterMonth(null) }}
@@ -533,6 +543,7 @@ export function ReviewPage() {
               }`}>
               Approved
             </button>
+          </div>
           </div>
         </div>
         {offerings && offerings.length > 0 && (
@@ -614,7 +625,7 @@ export function ReviewPage() {
             {viewMode === 'pending' ? 'No offerings pending review.' : 'No approved offerings yet.'}
           </p>
           {viewMode === 'pending' && (
-            <a href="/offerings" className="text-primary text-sm mt-2 inline-block hover:underline">Upload offering images</a>
+            <Link to="/offerings" className="text-primary text-sm mt-2 inline-block hover:underline">Upload offering images</Link>
           )}
         </div>
       )}
