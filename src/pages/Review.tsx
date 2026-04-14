@@ -303,6 +303,28 @@ export function ReviewPage() {
     },
   })
 
+  // Delete offering permanently (including image from storage and linked checks)
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const o = offerings?.find(o => o.id === id)
+      // Delete image from storage
+      if (o?.image_path) {
+        await supabase.storage.from('offering-images').remove([o.image_path])
+      }
+      // Delete offering (CASCADE deletes offering_checks)
+      const { error } = await supabase.from('offerings').delete().eq('id', id)
+      if (error) throw error
+      logActivity(appUser?.email || null, 'delete',
+        `Deleted ${o?.filename || `offering #${id}`}`, 'offering', id)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['offerings'] })
+      queryClient.invalidateQueries({ queryKey: ['offering-checks'] })
+      setSelectedId(null)
+      setEditMode(false)
+    },
+  })
+
   const saveMutation = useMutation({
     mutationFn: async ({ id, values, sections }: { id: number; values: Partial<Offering>; sections: Record<string, ScanSection> }) => {
       // Rebuild scan_data from edited sections
@@ -685,6 +707,18 @@ export function ReviewPage() {
                   Approved
                 </span>
               )}
+              <button
+                onClick={() => {
+                  if (confirm(`Permanently delete ${selected.filename || `offering #${selected.id}`}? This removes the image and any linked check records.`)) {
+                    deleteMutation.mutate(selected.id)
+                  }
+                }}
+                disabled={deleteMutation.isPending}
+                className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-destructive text-sm hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50"
+                title="Delete permanently"
+              >
+                {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              </button>
             </div>
           </div>
         </div>

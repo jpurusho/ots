@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Loader2, Receipt, Users, DollarSign, Wallet, Printer, ArrowLeft, FileText } from 'lucide-react'
+import { logActivity } from '@/lib/activity'
+import { useAuth } from '@/lib/auth-context'
+import { Loader2, Receipt, Users, DollarSign, Wallet, Printer, ArrowLeft, FileText, Trash2 } from 'lucide-react'
 
 interface Check {
   id: number
@@ -65,8 +67,22 @@ ${html}
 }
 
 export function ChecksPage() {
+  const { appUser } = useAuth()
+  const queryClient = useQueryClient()
   const churchName = useChurchName()
   const [tab, setTab] = useState<'checks' | 'contributors' | 'statements'>('checks')
+
+  const deleteCheckMutation = useMutation({
+    mutationFn: async (check: Check) => {
+      const { error } = await supabase.from('offering_checks').delete().eq('id', check.id)
+      if (error) throw error
+      logActivity(appUser?.email || null, 'delete_check',
+        `Deleted check #${check.check_number || check.id} from ${check.payer_name || 'Unknown'}`, 'check', check.id)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['offering-checks'] })
+    },
+  })
   const [statementsYear, setStatementsYear] = useState(new Date().getFullYear())
   const [selectedContributor, setSelectedContributor] = useState<string | null>(null)
 
@@ -220,6 +236,7 @@ export function ChecksPage() {
                 <th className="px-4 py-2 text-left text-xs font-medium text-muted">Category</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-muted">Memo</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-muted">Amount</th>
+                <th className="px-4 py-2 w-8"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -235,12 +252,22 @@ export function ChecksPage() {
                   </td>
                   <td className="px-4 py-2 text-xs text-muted">{c.memo || '—'}</td>
                   <td className="px-4 py-2 text-right font-bold">{fmt(c.amount || 0)}</td>
+                  <td className="px-4 py-2">
+                    <button onClick={(e) => {
+                      e.stopPropagation()
+                      if (confirm(`Delete check #${c.check_number || c.id} from ${c.payer_name}?`))
+                        deleteCheckMutation.mutate(c)
+                    }}
+                      className="p-1 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="bg-card border-t-2 border-border font-bold">
-                <td colSpan={5} className="px-4 py-2">Total</td>
+                <td colSpan={6} className="px-4 py-2">Total</td>
                 <td className="px-4 py-2 text-right text-primary">{fmt(selectedContrib.total)}</td>
               </tr>
             </tfoot>
@@ -324,6 +351,7 @@ export function ChecksPage() {
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted">Category</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted">Memo</th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-muted">Amount</th>
+                    <th className="px-4 py-2 w-8"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -340,12 +368,22 @@ export function ChecksPage() {
                       </td>
                       <td className="px-4 py-2 text-xs text-muted">{c.memo || '—'}</td>
                       <td className="px-4 py-2 text-right font-bold">{fmt(c.amount || 0)}</td>
+                      <td className="px-4 py-2">
+                        <button onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm(`Delete check #${c.check_number || c.id} from ${c.payer_name}?`))
+                            deleteCheckMutation.mutate(c)
+                        }}
+                          className="p-1 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="bg-card border-t-2 border-border font-bold">
-                    <td colSpan={5} className="px-4 py-2">Grand Total</td>
+                    <td colSpan={6} className="px-4 py-2">Grand Total</td>
                     <td className="px-4 py-2 text-right text-primary">{fmt(totalAmount)}</td>
                   </tr>
                 </tfoot>
