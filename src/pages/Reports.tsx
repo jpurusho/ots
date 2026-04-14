@@ -466,12 +466,21 @@ export function ReportsPage() {
           {/* Sortable data table */}
           <div className="rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm table-fixed">
+                <colgroup>
+                  <col className="w-[130px]" /> {/* Date */}
+                  <col /> {/* General */}
+                  <col /> {/* Cash */}
+                  <col /> {/* Sunday School */}
+                  <col /> {/* Building Fund */}
+                  <col /> {/* Miscellaneous */}
+                  <col /> {/* Total */}
+                </colgroup>
                 <thead>
                   <tr className="bg-card border-b border-border">
                     {COLUMNS.map(col => (
                       <th key={col.key} onClick={() => toggleSort(col.key)}
-                        className={`px-4 py-3 text-xs font-medium text-muted cursor-pointer hover:text-foreground select-none transition-colors ${
+                        className={`px-3 py-3 text-xs font-medium text-muted cursor-pointer hover:text-foreground select-none transition-colors ${
                           col.key === 'offering_date' ? 'text-left' : 'text-right'
                         }`}>
                         <span className="inline-flex items-center gap-1">
@@ -492,13 +501,13 @@ export function ReportsPage() {
                       return (
                         <tbody key={`missing-${row.date}`}>
                           <tr className="bg-warning/5 border-b border-border">
-                            <td className="px-4 py-2 font-medium text-warning">
+                            <td className="px-3 py-2 font-medium text-warning">
                               <div className="flex items-center gap-1.5">
                                 <span className="w-3 h-3 rounded-full bg-warning/30 flex-shrink-0" />
                                 {row.date}
                               </div>
                             </td>
-                            <td colSpan={6} className="px-4 py-2 text-xs text-warning italic">
+                            <td colSpan={6} className="px-3 py-2 text-xs text-warning italic">
                               No offering recorded for this Sunday
                             </td>
                           </tr>
@@ -510,18 +519,18 @@ export function ReportsPage() {
                       <tbody key={o.id}>
                         <tr onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
                           className="hover:bg-muted-foreground/5 cursor-pointer border-b border-border">
-                          <td className="px-4 py-2.5 font-medium">
+                          <td className="px-3 py-2.5 font-medium">
                             <div className="flex items-center gap-1.5">
                               {expandedId === o.id ? <ChevronUp className="w-3 h-3 text-muted" /> : <ChevronDown className="w-3 h-3 text-muted" />}
                               {formatDate(o.offering_date)}
                             </div>
                           </td>
-                          <td className="px-4 py-2.5 text-right">{fmt(o.general)}</td>
-                          <td className="px-4 py-2.5 text-right">{fmt(o.cash)}</td>
-                          <td className="px-4 py-2.5 text-right">{fmt(o.sunday_school)}</td>
-                          <td className="px-4 py-2.5 text-right">{fmt(o.building_fund)}</td>
-                          <td className="px-4 py-2.5 text-right">{fmt(o.misc)}</td>
-                          <td className="px-4 py-2.5 text-right font-bold">${rowTotal(o).toFixed(2)}</td>
+                          <td className="px-3 py-2.5 text-right">{fmt(o.general)}</td>
+                          <td className="px-3 py-2.5 text-right">{fmt(o.cash)}</td>
+                          <td className="px-3 py-2.5 text-right">{fmt(o.sunday_school)}</td>
+                          <td className="px-3 py-2.5 text-right">{fmt(o.building_fund)}</td>
+                          <td className="px-3 py-2.5 text-right">{fmt(o.misc)}</td>
+                          <td className="px-3 py-2.5 text-right font-bold">${rowTotal(o).toFixed(2)}</td>
                         </tr>
                         {expandedId === o.id && (
                           <tr>
@@ -557,13 +566,13 @@ export function ReportsPage() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-card border-t-2 border-border font-bold">
-                    <td className="px-4 py-3">Total</td>
-                    <td className="px-4 py-3 text-right">${grandTotal.general.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">${grandTotal.cash.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">${grandTotal.sunday_school.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">${grandTotal.building_fund.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">${grandTotal.misc.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right text-primary">${grandTotalSum.toFixed(2)}</td>
+                    <td className="px-3 py-3">Total</td>
+                    <td className="px-3 py-3 text-right">${grandTotal.general.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right">${grandTotal.cash.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right">${grandTotal.sunday_school.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right">${grandTotal.building_fund.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right">${grandTotal.misc.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right text-primary">${grandTotalSum.toFixed(2)}</td>
                   </tr>
                 </tfoot>
               </table>
