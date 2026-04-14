@@ -71,13 +71,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error && error.code === 'PGRST116') {
         // User not found in app_users table
-        // Check if this is the very first user (auto-promote to admin)
+        // Bootstrap admin: only this email auto-creates as admin when no admins exist
+        const BOOTSTRAP_ADMIN = import.meta.env.VITE_BOOTSTRAP_ADMIN || 'jerome.purushotham@gmail.com'
+
         const { count } = await supabase
           .from('app_users')
           .select('*', { count: 'exact', head: true })
+          .eq('role', 'admin')
 
-        if (count === 0) {
-          // First user ever — create as admin
+        if (count === 0 && email === BOOTSTRAP_ADMIN) {
+          // No admins exist and this is the bootstrap admin — create as admin
           const user = currentSession.user
           const { data: newUser, error: insertError } = await supabase
             .from('app_users')
@@ -94,14 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .single()
 
           if (insertError) {
-            console.error('[Auth] insert first admin failed:', insertError)
+            console.error('[Auth] insert bootstrap admin failed:', insertError)
           } else {
             setAppUser(newUser)
           }
         } else {
-          // Not the first user and not pre-added by admin — access denied
-          console.log('[Auth] User not in app_users:', email)
-          setAppUser(null) // null = not authorized (App.tsx shows Access Denied)
+          // Not the bootstrap admin or admins already exist — access denied
+          console.log('[Auth] User not authorized:', email)
+          setAppUser(null)
         }
       } else if (error) {
         console.error('[Auth] query app_user failed:', error)

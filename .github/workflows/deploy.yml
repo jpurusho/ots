@@ -31,6 +31,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_BOOTSTRAP_ADMIN: ${{ vars.VITE_BOOTSTRAP_ADMIN }}
 
       # SPA routing workaround — all routes serve index.html
       - run: cp dist/index.html dist/404.html
