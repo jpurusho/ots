@@ -127,6 +127,98 @@ function buildReportTable(offerings: ApprovedOffering[], grandTotal: Record<stri
   </tr></tfoot></table>`
 }
 
+function MonthCalendar({ year, month, offerings, missingSundays, onSelectDate }: {
+  year: number
+  month: number
+  offerings: ApprovedOffering[]
+  missingSundays: string[]
+  onSelectDate: (offeringId: number | null) => void
+}) {
+  // Build calendar grid
+  const firstDay = new Date(year, month, 1)
+  const lastDay = new Date(year, month + 1, 0)
+  const startPad = firstDay.getDay() // 0=Sun
+  const totalDays = lastDay.getDate()
+  const today = new Date()
+
+  // Map offering dates to their data
+  const offeringByDate = new Map<string, ApprovedOffering>()
+  for (const o of offerings) {
+    const d = parseOfferingDate(o.offering_date)
+    if (d) offeringByDate.set(d.toDateString(), o)
+  }
+
+  const missingSet = new Set(missingSundays.map(s => parseOfferingDate(s)?.toDateString()).filter(Boolean))
+
+  const days: Array<{ day: number; date: Date; isSunday: boolean; offering: ApprovedOffering | null; isMissing: boolean; isToday: boolean; isFuture: boolean }> = []
+  for (let d = 1; d <= totalDays; d++) {
+    const date = new Date(year, month, d)
+    const key = date.toDateString()
+    days.push({
+      day: d,
+      date,
+      isSunday: date.getDay() === 0,
+      offering: offeringByDate.get(key) || null,
+      isMissing: missingSet.has(key),
+      isToday: key === today.toDateString(),
+      isFuture: date > today,
+    })
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="grid grid-cols-7 text-center text-[10px] text-muted font-medium border-b border-border bg-card">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} className={`py-1.5 ${d === 'Sun' ? 'text-primary font-bold' : ''}`}>{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 text-center">
+        {/* Padding for days before the 1st */}
+        {Array.from({ length: startPad }).map((_, i) => (
+          <div key={`pad-${i}`} className="py-2" />
+        ))}
+        {days.map(({ day, isSunday, offering, isMissing, isToday, isFuture }) => {
+          const t = offering ? rowTotal(offering) : 0
+          return (
+            <div
+              key={day}
+              onClick={() => offering && onSelectDate(offering.id)}
+              className={`py-1.5 px-0.5 text-xs transition-colors relative ${
+                offering ? 'cursor-pointer hover:bg-primary/10' : ''
+              } ${isToday ? 'ring-1 ring-primary ring-inset' : ''} ${
+                isFuture ? 'opacity-30' : ''
+              }`}
+            >
+              <div className={`${isSunday ? 'font-bold' : ''} ${
+                offering ? 'text-success' : isMissing ? 'text-warning' : isSunday ? 'text-primary' : 'text-muted'
+              }`}>
+                {day}
+              </div>
+              {offering && (
+                <div className="text-[8px] text-success font-medium truncate">
+                  ${t.toFixed(0)}
+                </div>
+              )}
+              {isMissing && (
+                <div className="text-[8px] text-warning">missing</div>
+              )}
+              {isSunday && !offering && !isMissing && !isFuture && (
+                <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mx-auto mt-0.5" />
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center justify-center gap-4 py-1.5 border-t border-border text-[9px] text-muted">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success" /> Has offering</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning" /> Missing Sunday</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary/30" /> Sunday (future)</span>
+      </div>
+    </div>
+  )
+}
+
 export function ReportsPage() {
   const navigate = useNavigate()
   const now = new Date()
@@ -347,6 +439,19 @@ export function ReportsPage() {
           )}
         </span>
       </div>
+
+      {/* Month calendar view (monthly mode only) */}
+      {viewMode === 'monthly' && !isLoading && (
+        <MonthCalendar
+          year={year}
+          month={month}
+          offerings={offerings}
+          missingSundays={missingSundays}
+          onSelectDate={(offeringId) => {
+            if (offeringId) setExpandedId(expandedId === offeringId ? null : offeringId)
+          }}
+        />
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
