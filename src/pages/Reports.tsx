@@ -206,6 +206,44 @@ export function ReportsPage() {
   const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }
   const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }
 
+  // Find missing Sundays (only in monthly view, only past dates)
+  const missingSundays = useMemo(() => {
+    if (viewMode !== 'monthly') return []
+    const sundays: string[] = []
+    const today = new Date()
+    today.setHours(23, 59, 59) // include today
+    const d = new Date(year, month, 1)
+    while (d.getMonth() === month) {
+      if (d.getDay() === 0 && d <= today) { // Sunday and not in the future
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        const dd = String(d.getDate()).padStart(2, '0')
+        sundays.push(`${mm}/${dd}/${d.getFullYear()}`)
+      }
+      d.setDate(d.getDate() + 1)
+    }
+    // Filter out Sundays that have offerings
+    const offeringDates = new Set(offerings.map(o => o.offering_date))
+    return sundays.filter(s => !offeringDates.has(s))
+  }, [offerings, month, year, viewMode])
+
+  // Merge offerings and missing Sundays for display
+  type DisplayRow = { type: 'offering'; data: ApprovedOffering } | { type: 'missing'; date: string }
+  const displayRows = useMemo((): DisplayRow[] => {
+    const rows: DisplayRow[] = offerings.map(o => ({ type: 'offering' as const, data: o }))
+    for (const date of missingSundays) {
+      rows.push({ type: 'missing' as const, date })
+    }
+    // Sort by date
+    rows.sort((a, b) => {
+      const dateA = a.type === 'offering' ? a.data.offering_date : a.date
+      const dateB = b.type === 'offering' ? b.data.offering_date : b.date
+      const da = parseOfferingDate(dateA || '')?.getTime() || 0
+      const db = parseOfferingDate(dateB || '')?.getTime() || 0
+      return da - db
+    })
+    return rows
+  }, [offerings, missingSundays])
+
   const grandTotal = offerings.reduce((acc, o) => ({
     general: acc.general + (o.general || 0), cash: acc.cash + (o.cash || 0),
     sunday_school: acc.sunday_school + (o.sunday_school || 0),
@@ -295,7 +333,12 @@ export function ReportsPage() {
           </div>
         )}
 
-        <span className="text-xs text-muted">{offerings.length} offering{offerings.length !== 1 ? 's' : ''}</span>
+        <span className="text-xs text-muted">
+          {offerings.length} offering{offerings.length !== 1 ? 's' : ''}
+          {missingSundays.length > 0 && (
+            <span className="text-warning ml-2">{missingSundays.length} missing</span>
+          )}
+        </span>
       </div>
 
       {isLoading ? (
@@ -396,53 +439,73 @@ export function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {offerings.map(o => (
-                    <tbody key={o.id}>
-                      <tr onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
-                        className="hover:bg-muted-foreground/5 cursor-pointer border-b border-border">
-                        <td className="px-4 py-2.5 font-medium">
-                          <div className="flex items-center gap-1.5">
-                            {expandedId === o.id ? <ChevronUp className="w-3 h-3 text-muted" /> : <ChevronDown className="w-3 h-3 text-muted" />}
-                            {formatDate(o.offering_date)}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2.5 text-right">{fmt(o.general)}</td>
-                        <td className="px-4 py-2.5 text-right">{fmt(o.cash)}</td>
-                        <td className="px-4 py-2.5 text-right">{fmt(o.sunday_school)}</td>
-                        <td className="px-4 py-2.5 text-right">{fmt(o.building_fund)}</td>
-                        <td className="px-4 py-2.5 text-right">{fmt(o.misc)}</td>
-                        <td className="px-4 py-2.5 text-right font-bold">${rowTotal(o).toFixed(2)}</td>
-                      </tr>
-                      {expandedId === o.id && (
-                        <tr>
-                          <td colSpan={7} className="px-4 py-3 bg-card/50 border-b border-border">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="space-y-1 text-xs">
-                                <p className="font-medium text-sm mb-2">Week of {formatDate(o.offering_date)}</p>
-                                {o.general > 0 && <p>General (Checks): <strong>${o.general.toFixed(2)}</strong></p>}
-                                {o.cash > 0 && <p>Cash (Denominations): <strong>${o.cash.toFixed(2)}</strong></p>}
-                                {o.sunday_school > 0 && <p>Sunday School: <strong>${o.sunday_school.toFixed(2)}</strong></p>}
-                                {o.building_fund > 0 && <p>Building Fund: <strong>${o.building_fund.toFixed(2)}</strong></p>}
-                                {o.misc > 0 && <p>Miscellaneous: <strong>${o.misc.toFixed(2)}</strong></p>}
-                                <p className="pt-1 font-bold">Total: ${rowTotal(o).toFixed(2)}</p>
-                                {o.notes && <p className="text-muted pt-1">{o.notes}</p>}
+                  {displayRows.map((row) => {
+                    if (row.type === 'missing') {
+                      return (
+                        <tbody key={`missing-${row.date}`}>
+                          <tr className="bg-warning/5 border-b border-border">
+                            <td className="px-4 py-2 font-medium text-warning">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 rounded-full bg-warning/30 flex-shrink-0" />
+                                {row.date}
                               </div>
-                              <div className="flex gap-2 flex-shrink-0">
-                                <button onClick={e => { e.stopPropagation(); navigate(`/review?id=${o.id}`) }}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
-                                  <ExternalLink className="w-3 h-3" /> View
-                                </button>
-                                <button onClick={e => { e.stopPropagation(); printWeekCard(o) }}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
-                                  <Share2 className="w-3 h-3" /> Share Card
-                                </button>
-                              </div>
+                            </td>
+                            <td colSpan={6} className="px-4 py-2 text-xs text-warning italic">
+                              No offering recorded for this Sunday
+                            </td>
+                          </tr>
+                        </tbody>
+                      )
+                    }
+                    const o = row.data
+                    return (
+                      <tbody key={o.id}>
+                        <tr onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
+                          className="hover:bg-muted-foreground/5 cursor-pointer border-b border-border">
+                          <td className="px-4 py-2.5 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              {expandedId === o.id ? <ChevronUp className="w-3 h-3 text-muted" /> : <ChevronDown className="w-3 h-3 text-muted" />}
+                              {formatDate(o.offering_date)}
                             </div>
                           </td>
+                          <td className="px-4 py-2.5 text-right">{fmt(o.general)}</td>
+                          <td className="px-4 py-2.5 text-right">{fmt(o.cash)}</td>
+                          <td className="px-4 py-2.5 text-right">{fmt(o.sunday_school)}</td>
+                          <td className="px-4 py-2.5 text-right">{fmt(o.building_fund)}</td>
+                          <td className="px-4 py-2.5 text-right">{fmt(o.misc)}</td>
+                          <td className="px-4 py-2.5 text-right font-bold">${rowTotal(o).toFixed(2)}</td>
                         </tr>
-                      )}
-                    </tbody>
-                  ))}
+                        {expandedId === o.id && (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-3 bg-card/50 border-b border-border">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="space-y-1 text-xs">
+                                  <p className="font-medium text-sm mb-2">Week of {formatDate(o.offering_date)}</p>
+                                  {o.general > 0 && <p>General (Checks): <strong>${o.general.toFixed(2)}</strong></p>}
+                                  {o.cash > 0 && <p>Cash (Denominations): <strong>${o.cash.toFixed(2)}</strong></p>}
+                                  {o.sunday_school > 0 && <p>Sunday School: <strong>${o.sunday_school.toFixed(2)}</strong></p>}
+                                  {o.building_fund > 0 && <p>Building Fund: <strong>${o.building_fund.toFixed(2)}</strong></p>}
+                                  {o.misc > 0 && <p>Miscellaneous: <strong>${o.misc.toFixed(2)}</strong></p>}
+                                  <p className="pt-1 font-bold">Total: ${rowTotal(o).toFixed(2)}</p>
+                                  {o.notes && <p className="text-muted pt-1">{o.notes}</p>}
+                                </div>
+                                <div className="flex gap-2 flex-shrink-0">
+                                  <button onClick={e => { e.stopPropagation(); navigate(`/review?id=${o.id}`) }}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                                    <ExternalLink className="w-3 h-3" /> View
+                                  </button>
+                                  <button onClick={e => { e.stopPropagation(); printWeekCard(o) }}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                                    <Share2 className="w-3 h-3" /> Share Card
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    )
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="bg-card border-t-2 border-border font-bold">
