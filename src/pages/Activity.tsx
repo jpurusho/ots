@@ -31,6 +31,17 @@ export function ActivityPage() {
   const [purgeFrom, setPurgeFrom] = useState('')
   const [purgeTo, setPurgeTo] = useState('')
   const [showPurge, setShowPurge] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
 
   const { data: entries, isLoading } = useQuery({
     queryKey: ['activity'],
@@ -46,26 +57,64 @@ export function ActivityPage() {
   })
 
   const purgeMutation = useMutation({
-    mutationFn: async ({ from, to }: { from: string; to: string }) => {
-      let query = supabase.from('activity_log').delete()
-      if (from) query = query.gte('created_at', from)
-      if (to) query = query.lte('created_at', `${to}T23:59:59`)
-      if (!from && !to) {
-        // Delete all
-        query = query.gte('id', 0)
+    mutationFn: async ({ from, to, ids }: { from?: string; to?: string; ids?: number[] }) => {
+      if (ids && ids.length > 0) {
+        // Delete specific IDs (multi-select)
+        const { error } = await supabase
+          .from('activity_log')
+          .delete()
+          .in('id', ids)
+        if (error) throw error
+      } else if (from || to) {
+        // Delete by date range
+        let query = supabase.from('activity_log').delete()
+        if (from) query = query.gte('created_at', `${from}T00:00:00`)
+        if (to) query = query.lte('created_at', `${to}T23:59:59`)
+        const { error } = await query
+        if (error) throw error
+      } else {
+        // Delete all — fetch all IDs first, then delete in batches
+        const { data: allRows, error: fetchError } = await supabase
+          .from('activity_log')
+          .select('id')
+        if (fetchError) throw fetchError
+        if (allRows && allRows.length > 0) {
+          const allIds = allRows.map(r => r.id)
+          // Delete in batches of 100
+          for (let i = 0; i < allIds.length; i += 100) {
+            const batch = allIds.slice(i, i + 100)
+            const { error } = await supabase
+              .from('activity_log')
+              .delete()
+              .in('id', batch)
+            if (error) throw error
+          }
+        }
       }
-      const { error } = await query
-      if (error) throw error
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activity'] })
       setShowPurge(false)
       setPurgeFrom('')
       setPurgeTo('')
+      setSelectedIds(new Set())
     },
   })
 
   const columns: Column<ActivityEntry>[] = [
+    {
+      key: 'select',
+      label: '',
+      render: (r) => (
+        <input type="checkbox"
+          checked={selectedIds.has(r.id)}
+          onChange={() => toggleSelect(r.id)}
+          onClick={e => e.stopPropagation()}
+          className="cursor-pointer accent-primary"
+        />
+      ),
+      className: 'w-8',
+    },
     {
       key: 'action',
       label: 'Action',
@@ -122,10 +171,24 @@ export function ActivityPage() {
           <h1 className="text-2xl font-bold">Activity</h1>
           <p className="text-muted text-sm">System audit log</p>
         </div>
-        <button onClick={() => setShowPurge(!showPurge)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/30 text-destructive text-xs hover:bg-destructive/10 cursor-pointer">
-          <Trash2 className="w-3.5 h-3.5" /> Purge
-        </button>
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => {
+                if (confirm(`Delete ${selectedIds.size} selected activity entries?`)) {
+                  purgeMutation.mutate({ ids: [...selectedIds] })
+                }
+              }}
+              disabled={purgeMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive text-white text-xs font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-50">
+              <Trash2 className="w-3.5 h-3.5" /> Delete {selectedIds.size} Selected
+            </button>
+          )}
+          <button onClick={() => setShowPurge(!showPurge)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/30 text-destructive text-xs hover:bg-destructive/10 cursor-pointer">
+            <Trash2 className="w-3.5 h-3.5" /> Purge
+          </button>
+        </div>
       </div>
 
       {/* Purge panel */}
@@ -149,7 +212,7 @@ export function ActivityPage() {
                   ? `Delete activity logs${purgeFrom ? ` from ${purgeFrom}` : ''}${purgeTo ? ` to ${purgeTo}` : ''}?`
                   : 'Delete ALL activity logs?'
                 if (confirm(msg)) {
-                  purgeMutation.mutate({ from: purgeFrom, to: purgeTo })
+                  purgeMutation.mutate({ from: purgeFrom || undefined, to: purgeTo || undefined })
                 }
               }}
               disabled={purgeMutation.isPending}
