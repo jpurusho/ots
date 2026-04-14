@@ -251,6 +251,7 @@ export function ReportsPage() {
 
   const [emailSending, setEmailSending] = useState(false)
   const [showMissing, setShowMissing] = useState(true)
+  const [displayMode, setDisplayMode] = useState<'table' | 'cards'>('table')
 
   const { data: churchName } = useQuery({
     queryKey: ['settings', 'church_name'],
@@ -393,15 +394,6 @@ export function ReportsPage() {
 
   const printWeekCard = (o: ApprovedOffering) => {
     openHtml(title, `Week of ${formatDate(o.offering_date)}`, buildOfferingCard(title, o))
-  }
-
-  const printAllCards = () => {
-    const cards = offerings.map(o => buildOfferingCard(title, o)).join('')
-    openHtml(title, periodLabel,
-      `<div class="cards-grid">${cards}</div>
-       <div style="margin-top:20px;padding-top:12px;border-top:2px solid #333;font-size:14px;font-weight:bold">
-         Grand Total: $${grandTotalSum.toFixed(2)} (${offerings.length} week${offerings.length !== 1 ? 's' : ''})
-       </div>`)
   }
 
   const exportCsv = () => {
@@ -563,9 +555,11 @@ export function ReportsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer">
                 <Printer className="w-3.5 h-3.5" /> PDF
               </button>
-              <button onClick={printAllCards}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
-                <Share2 className="w-3.5 h-3.5" /> Cards
+              <button onClick={() => setDisplayMode(displayMode === 'cards' ? 'table' : 'cards')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer ${
+                  displayMode === 'cards' ? 'bg-primary text-primary-foreground' : 'border border-border hover:bg-muted-foreground/10'
+                }`}>
+                <Share2 className="w-3.5 h-3.5" /> {displayMode === 'cards' ? 'Table' : 'Cards'}
               </button>
               <button onClick={exportCsv}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
@@ -669,8 +663,123 @@ export function ReportsPage() {
             </div>
           </div>
 
+          {/* Cards view (inline) */}
+          {displayMode === 'cards' && (
+            <div>
+              {/* Period summary card */}
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 mb-4">
+                <h2 className="text-lg font-bold text-primary">{title}</h2>
+                <p className="text-sm text-muted">{periodLabel} — {offerings.length} offering{offerings.length !== 1 ? 's' : ''}</p>
+                <div className="flex gap-6 mt-3 text-sm">
+                  <span>General: <strong>${grandTotal.general.toFixed(2)}</strong></span>
+                  <span>Cash: <strong>${grandTotal.cash.toFixed(2)}</strong></span>
+                  {grandTotal.sunday_school > 0 && <span>SS: <strong>${grandTotal.sunday_school.toFixed(2)}</strong></span>}
+                  {grandTotal.building_fund > 0 && <span>BF: <strong>${grandTotal.building_fund.toFixed(2)}</strong></span>}
+                  {grandTotal.misc > 0 && <span>Misc: <strong>${grandTotal.misc.toFixed(2)}</strong></span>}
+                  <span className="text-primary font-bold">Total: ${grandTotalSum.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Individual week cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {offerings.map(o => {
+                  const t = rowTotal(o)
+                  return (
+                    <div key={o.id} className="rounded-xl border border-border overflow-hidden hover:border-primary/30 transition-colors">
+                      <div className="bg-card px-4 py-3 border-b border-border">
+                        <p className="text-sm font-bold">{formatDate(o.offering_date)}</p>
+                        <p className="text-[10px] text-muted">Week offering</p>
+                      </div>
+                      <div className="px-4 py-3 space-y-1.5">
+                        {o.general > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted">General (Checks)</span>
+                            <span>${o.general.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {o.cash > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted">Cash</span>
+                            <span>${o.cash.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {o.sunday_school > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted">Sunday School</span>
+                            <span>${o.sunday_school.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {o.building_fund > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted">Building Fund</span>
+                            <span>${o.building_fund.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {o.misc > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted">Miscellaneous</span>
+                            <span>${o.misc.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-sm font-bold pt-1.5 border-t border-border">
+                          <span>Total</span>
+                          <span className="text-primary">${t.toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <div className="px-4 py-2 border-t border-border flex gap-2">
+                        <button onClick={() => navigate(`/review?id=${o.id}`)}
+                          className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                          <ExternalLink className="w-3 h-3" /> Review
+                        </button>
+                        <button onClick={async () => {
+                          const recipients = prompt('Email card to:', defaultRecipients || '')
+                          if (!recipients) return
+                          const cardHtml = '<div style="font-family:system-ui,sans-serif;max-width:420px;margin:0 auto;color:#1a1a2e">' +
+                            '<div style="background:#4f46e5;color:white;padding:16px 20px;border-radius:8px 8px 0 0">' +
+                            '<h2 style="margin:0;font-size:16px">' + title + '</h2>' +
+                            '<p style="margin:4px 0 0;font-size:12px;opacity:0.85">Week of ' + formatDate(o.offering_date) + '</p></div>' +
+                            '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:16px 20px">' +
+                            (o.general > 0 ? '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px"><span>General</span><span>$' + o.general.toFixed(2) + '</span></div>' : '') +
+                            (o.cash > 0 ? '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px"><span>Cash</span><span>$' + o.cash.toFixed(2) + '</span></div>' : '') +
+                            (o.sunday_school > 0 ? '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px"><span>Sunday School</span><span>$' + o.sunday_school.toFixed(2) + '</span></div>' : '') +
+                            (o.building_fund > 0 ? '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px"><span>Building Fund</span><span>$' + o.building_fund.toFixed(2) + '</span></div>' : '') +
+                            (o.misc > 0 ? '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px"><span>Misc</span><span>$' + o.misc.toFixed(2) + '</span></div>' : '') +
+                            '<div style="display:flex;justify-content:space-between;padding:10px 0 0;margin-top:4px;border-top:2px solid #4f46e5;font-weight:bold;font-size:16px;color:#4f46e5"><span>Total</span><span>$' + t.toFixed(2) + '</span></div>' +
+                            '</div></div>'
+                          try {
+                            await fetch(BACKEND_URL + '/api/email/send', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ to: recipients.split(',').map((s: string) => s.trim()).filter(Boolean), subject: title + ' — Week of ' + formatDate(o.offering_date), html_body: cardHtml }),
+                            })
+                            alert('Email sent!')
+                          } catch { alert('Send failed') }
+                        }}
+                          className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                          <Mail className="w-3 h-3" /> Email
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Missing Sundays */}
+              {showMissing && missingSundays.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {missingSundays.map(date => (
+                    <div key={date} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-warning/5 border border-warning/20">
+                      <span className="w-3 h-3 rounded-full bg-warning/30" />
+                      <span className="text-sm text-warning">{date} — No offering recorded</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Sortable data table */}
-          <div className="rounded-xl border border-border overflow-hidden">
+          {displayMode === 'table' && <div className="rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm table-fixed">
                 <colgroup>
@@ -819,7 +928,7 @@ export function ReportsPage() {
                 </tfoot>
               </table>
             </div>
-          </div>
+          </div>}
         </>
       ) : (
         <div className="rounded-xl border border-border bg-card p-10 text-center">
