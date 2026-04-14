@@ -90,28 +90,58 @@ export function SettingsPage() {
     setTestResult(null)
     try {
       if (type === 'drive') {
-        // Save credentials first, then test
-        await handleSave()
-        const folderId = formValues['drive_images_folder_id']
-        if (!folderId) {
-          setTestResult({ key: 'drive', success: false, message: 'Enter an Images Folder ID to test' })
+        // Save credentials first, then test both folders
+        if (hasChanges) await handleSave()
+        const imagesFolderId = formValues['drive_images_folder_id']
+        const reportsFolderId = formValues['drive_reports_folder_id']
+
+        if (!imagesFolderId && !reportsFolderId) {
+          setTestResult({ key: 'drive', success: false, message: 'Enter at least one folder ID to test' })
           return
         }
-        const resp = await fetch(`${BACKEND_URL}/api/drive/test`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder_id: folderId }),
-        })
-        const data = await resp.json()
+
+        const results: string[] = []
+        let allOk = true
+
+        // Test images folder
+        if (imagesFolderId) {
+          const resp = await fetch(`${BACKEND_URL}/api/drive/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_id: imagesFolderId }),
+          })
+          const data = await resp.json()
+          if (data.success) {
+            results.push(`Images: ${data.folder_name} (${data.file_count} files)`)
+          } else {
+            results.push(`Images: ${data.error || 'Failed'}`)
+            allOk = false
+          }
+        }
+
+        // Test reports folder
+        if (reportsFolderId) {
+          const resp = await fetch(`${BACKEND_URL}/api/drive/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_id: reportsFolderId }),
+          })
+          const data = await resp.json()
+          if (data.success) {
+            results.push(`Reports: ${data.folder_name}`)
+          } else {
+            results.push(`Reports: ${data.error || 'Failed'}`)
+            allOk = false
+          }
+        }
+
         setTestResult({
           key: 'drive',
-          success: data.success,
-          message: data.success
-            ? `Connected! Folder: ${data.folder_name} (${data.file_count} files)`
-            : data.error || 'Connection failed',
+          success: allOk,
+          message: results.join(' | '),
         })
       } else if (type === 'email') {
-        await handleSave()
+        if (hasChanges) await handleSave()
         const resp = await fetch(`${BACKEND_URL}/api/email/test`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -130,6 +160,9 @@ export function SettingsPage() {
   }
 
   const tabSettings = settings?.filter(s => s.category === activeTab) || []
+
+  // Check if any values changed in the current tab
+  const hasChanges = tabSettings.some(s => formValues[s.key] !== (s.value || ''))
 
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
@@ -275,10 +308,10 @@ export function SettingsPage() {
                   <CheckCircle className="w-4 h-4" /> Saved
                 </span>
               )}
-              <button onClick={handleSave} disabled={saveMutation.isPending}
+              <button onClick={handleSave} disabled={saveMutation.isPending || !hasChanges}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
                 {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save
+                {hasChanges ? 'Save' : 'Saved'}
               </button>
             </div>
           </div>
