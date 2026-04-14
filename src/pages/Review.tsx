@@ -306,8 +306,9 @@ export function ReviewPage() {
   const isLocalDev = import.meta.env.VITE_SUPABASE_URL?.includes('127.0.0.1') || import.meta.env.VITE_SUPABASE_URL?.includes('localhost')
 
   // For local dev, compute public URL directly (synchronous, no query needed)
+  // Add selected.id as cache-buster to ensure URL changes when offering changes
   const localImageUrl = selected?.image_path && isLocalDev
-    ? supabase.storage.from('offering-images').getPublicUrl(selected.image_path).data.publicUrl
+    ? supabase.storage.from('offering-images').getPublicUrl(selected.image_path).data.publicUrl + `?v=${selected.id}`
     : null
 
   // For cloud, use signed URL via query

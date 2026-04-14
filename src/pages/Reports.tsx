@@ -26,7 +26,7 @@ interface ApprovedOffering {
 
 type SortKey = 'offering_date' | 'general' | 'cash' | 'sunday_school' | 'building_fund' | 'misc' | 'total'
 type SortDir = 'asc' | 'desc'
-type ViewMode = 'monthly' | 'range'
+type ViewMode = 'monthly' | 'yearly' | 'range'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
@@ -258,6 +258,8 @@ export function ReportsPage() {
       if (!d) return false
       if (viewMode === 'monthly') {
         return d.getMonth() === month && d.getFullYear() === year
+      } else if (viewMode === 'yearly') {
+        return d.getFullYear() === year
       } else {
         const from = dateFrom ? new Date(dateFrom) : null
         const to = dateTo ? new Date(dateTo + 'T23:59:59') : null
@@ -300,14 +302,17 @@ export function ReportsPage() {
   const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }
   const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }
 
-  // Find missing Sundays (only in monthly view, only past dates)
+  // Find missing Sundays (monthly and yearly views, only past dates)
   const missingSundays = useMemo(() => {
-    if (viewMode !== 'monthly') return []
+    if (viewMode === 'range') return []
     const sundays: string[] = []
     const today = new Date()
     today.setHours(23, 59, 59)
-    const d = new Date(year, month, 1)
-    while (d.getMonth() === month) {
+    const startMonth = viewMode === 'yearly' ? 0 : month
+    const endMonth = viewMode === 'yearly' ? 11 : month
+    const d = new Date(year, startMonth, 1)
+    const endDate = new Date(year, endMonth + 1, 0)
+    while (d <= endDate) {
       if (d.getDay() === 0 && d <= today) {
         const mm = String(d.getMonth() + 1).padStart(2, '0')
         const dd = String(d.getDate()).padStart(2, '0')
@@ -354,6 +359,8 @@ export function ReportsPage() {
 
   const periodLabel = viewMode === 'monthly'
     ? `${MONTHS[month]} ${year}`
+    : viewMode === 'yearly'
+    ? `${year}`
     : `${dateFrom || 'Start'} to ${dateTo || 'End'}`
 
   const title = churchName || 'Offering Report'
@@ -393,7 +400,7 @@ export function ReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Reports</h1>
-          <p className="text-muted text-sm">{title} — {viewMode === 'monthly' ? 'Monthly' : 'Date Range'} Report</p>
+          <p className="text-muted text-sm">{title} — {viewMode === 'monthly' ? 'Monthly' : viewMode === 'yearly' ? 'Yearly' : 'Date Range'} Report</p>
         </div>
       </div>
 
@@ -404,10 +411,14 @@ export function ReportsPage() {
             className={`px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors ${
               viewMode === 'monthly' ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
             }`}>Monthly</button>
+          <button onClick={() => setViewMode('yearly')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors ${
+              viewMode === 'yearly' ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
+            }`}>Yearly</button>
           <button onClick={() => setViewMode('range')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors flex items-center gap-1 ${
               viewMode === 'range' ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
-            }`}><CalendarRange className="w-3 h-3" /> Date Range</button>
+            }`}><CalendarRange className="w-3 h-3" /> Range</button>
         </div>
 
         {viewMode === 'monthly' ? (
@@ -419,6 +430,18 @@ export function ReportsPage() {
               <p className="text-sm font-bold">{MONTHS[month]} {year}</p>
             </div>
             <button onClick={nextMonth} className="p-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : viewMode === 'yearly' ? (
+          <div className="flex items-center gap-3">
+            <button onClick={() => setYear(y => y - 1)} className="p-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="text-center min-w-[80px]">
+              <p className="text-sm font-bold">{year}</p>
+            </div>
+            <button onClick={() => setYear(y => y + 1)} className="p-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
