@@ -96,4 +96,10 @@ INSERT INTO app_settings (key, value, category, data_type, label, description) V
   ('church_name', 'Christ Church of India, San Ramon', 'general', 'string', 'Organization Name', 'Displayed in report headers'),
   ('scanner_model', 'claude-sonnet-4-6-20250929', 'ai', 'string', 'Scanner Model', 'Claude model for image scanning'),
   ('use_bedrock', 'false', 'ai', 'boolean', 'Use AWS Bedrock', 'Use Bedrock instead of direct Anthropic API'),
-  ('items_per_page', '20', 'general', 'number', 'Items Per Page', 'Number of items shown in lists');
+  ('items_per_page', '20', 'general', 'number', 'Items Per Page', 'Number of items shown in lists'),
+  ('google_drive_credentials', '', 'drive', 'string', 'Service Account JSON', 'Google service account credentials (JSON key)'),
+  ('drive_images_folder_id', '', 'drive', 'string', 'Images Folder ID', 'Google Drive folder for importing offering images'),
+  ('drive_reports_folder_id', '', 'drive', 'string', 'Reports Folder ID', 'Google Drive folder for uploading generated reports'),
+  ('smtp_user', '', 'email', 'string', 'Gmail Address', 'Gmail account for sending reports'),
+  ('smtp_password', '', 'email', 'string', 'App Password', 'Gmail app-specific password'),
+  ('report_recipients', '', 'email', 'string', 'Default Recipients', 'Comma-separated email addresses for report delivery');

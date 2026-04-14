@@ -3,8 +3,10 @@ import { useAuth } from '@/lib/auth-context'
 import { useUploadManager } from '@/lib/upload-manager'
 import {
   Upload, X, FileImage, FileText, CheckCircle, XCircle,
-  ArrowRight, ImagePlus, Sparkles,
+  ArrowRight, ImagePlus, Sparkles, CloudDownload, Loader2,
 } from 'lucide-react'
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 export function OfferingsPage() {
   const { appUser } = useAuth()
@@ -202,15 +204,95 @@ export function OfferingsPage() {
         </div>
       )}
 
+      {/* Import from Google Drive */}
+      <DriveImportSection />
+
       {/* Empty state */}
       {files.length === 0 && results.length === 0 && !uploadState.uploading && (
         <div className="rounded-xl border border-border/50 bg-card/50 p-6">
           <h3 className="font-medium mb-2">How it works</h3>
           <ol className="space-y-1.5 text-sm text-muted">
-            <li>1. Drop or select offering slip images (JPEG, PNG, HEIC, PDF)</li>
-            <li>2. Click <strong>Upload</strong> to save images and scan with AI</li>
+            <li>1. Drop or select offering slip images, or import from Google Drive</li>
+            <li>2. Images are automatically scanned with AI</li>
             <li>3. Go to <strong>Review</strong> to approve the scanned offerings</li>
           </ol>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DriveImportSection() {
+  const [importing, setImporting] = useState(false)
+  const [result, setResult] = useState<{
+    imported: number; skipped: number; errors: number; total: number;
+    results: Array<{ name: string; status: string; reason?: string }>
+  } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleImport = async () => {
+    setImporting(true)
+    setResult(null)
+    setError(null)
+    try {
+      const resp = await fetch(`${BACKEND_URL}/api/drive/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_scan: true }),
+      })
+      const data = await resp.json()
+      if (data.detail) throw new Error(data.detail)
+      setResult(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CloudDownload className="w-4 h-4 text-muted" />
+          <div>
+            <p className="text-sm font-medium">Import from Google Drive</p>
+            <p className="text-[10px] text-muted">Pull new images from shared Drive folder</p>
+          </div>
+        </div>
+        <button onClick={handleImport} disabled={importing}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+          {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudDownload className="w-4 h-4" />}
+          {importing ? 'Importing...' : 'Import'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="px-4 py-2 border-t border-border bg-destructive/5 text-destructive text-xs">
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className="px-4 py-3 border-t border-border">
+          <div className="flex gap-4 text-xs mb-2">
+            <span className="text-success">Imported: <strong>{result.imported}</strong></span>
+            <span className="text-muted">Skipped: <strong>{result.skipped}</strong></span>
+            {result.errors > 0 && <span className="text-destructive">Errors: <strong>{result.errors}</strong></span>}
+            <span className="text-muted">Total: {result.total}</span>
+          </div>
+          {result.results.length > 0 && (
+            <div className="space-y-0.5 max-h-32 overflow-y-auto">
+              {result.results.map((r, i) => (
+                <div key={i} className={`text-[10px] flex items-center gap-1 ${
+                  r.status === 'imported' ? 'text-success' : r.status === 'error' ? 'text-destructive' : 'text-muted'
+                }`}>
+                  {r.status === 'imported' ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                  {r.name} {r.reason && `— ${r.reason}`}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
