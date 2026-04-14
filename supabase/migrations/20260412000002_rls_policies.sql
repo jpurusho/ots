@@ -43,8 +43,10 @@ CREATE POLICY "Authenticated users can read settings"
 CREATE POLICY "Authenticated users can modify settings"
   ON app_settings FOR ALL TO authenticated USING (true);
 
--- Activity log: all authenticated can read and insert
+-- Activity log: all authenticated can read, insert, and delete
 CREATE POLICY "Authenticated users can read activity"
   ON activity_log FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Authenticated users can log activity"
   ON activity_log FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated users can delete activity"
+  ON activity_log FOR DELETE TO authenticated USING (true);
