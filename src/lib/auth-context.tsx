@@ -70,36 +70,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (error && error.code === 'PGRST116') {
-        // Not found — create user, first user becomes admin
+        // User not found in app_users table
+        // Check if this is the very first user (auto-promote to admin)
         const { count } = await supabase
           .from('app_users')
           .select('*', { count: 'exact', head: true })
 
-        const role = count === 0 ? 'admin' : 'operator'
-        const user = currentSession.user
+        if (count === 0) {
+          // First user ever — create as admin
+          const user = currentSession.user
+          const { data: newUser, error: insertError } = await supabase
+            .from('app_users')
+            .insert({
+              auth_id: user.id,
+              email,
+              name: user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0],
+              picture: user.user_metadata?.avatar_url || null,
+              role: 'admin',
+              is_active: true,
+              last_login: new Date().toISOString(),
+            })
+            .select()
+            .single()
 
-        const { data: newUser, error: insertError } = await supabase
-          .from('app_users')
-          .insert({
-            auth_id: user.id,
-            email,
-            name: user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0],
-            picture: user.user_metadata?.avatar_url || null,
-            role,
-            is_active: true,
-            last_login: new Date().toISOString(),
-          })
-          .select()
-          .single()
-
-        if (insertError) {
-          console.error('[Auth] insert app_user failed:', insertError)
+          if (insertError) {
+            console.error('[Auth] insert first admin failed:', insertError)
+          } else {
+            setAppUser(newUser)
+          }
         } else {
-          setAppUser(newUser)
+          // Not the first user and not pre-added by admin — access denied
+          console.log('[Auth] User not in app_users:', email)
+          setAppUser(null) // null = not authorized (App.tsx shows Access Denied)
         }
       } else if (error) {
         console.error('[Auth] query app_user failed:', error)
+        setAppUser(null)
       } else if (data) {
+        // Check if account is active
+        if (!data.is_active) {
+          console.log('[Auth] User deactivated:', email)
+          setAppUser(null) // null = not authorized
+          return
+        }
         setAppUser(data)
         // Update last_login in background
         supabase
