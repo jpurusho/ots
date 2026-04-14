@@ -258,10 +258,26 @@ export function ReviewPage() {
 
   const resetZoom = () => { setZoom(1); setPan({ x: 0, y: 0 }) }
 
-  // Public URL — no auth needed, works reliably in all views
-  const imageUrl = selected?.image_path
-    ? supabase.storage.from('offering-images').getPublicUrl(selected.image_path).data.publicUrl
-    : null
+  // Use signed URLs (private bucket) on cloud, public URLs on local dev
+  const isLocalDev = import.meta.env.VITE_SUPABASE_URL?.includes('127.0.0.1') || import.meta.env.VITE_SUPABASE_URL?.includes('localhost')
+
+  const { data: imageUrl } = useQuery({
+    queryKey: ['offering-image', selected?.image_path, isLocalDev],
+    queryFn: async () => {
+      if (!selected?.image_path) return null
+      if (isLocalDev) {
+        // Local dev — use public URL (local bucket is public)
+        return supabase.storage.from('offering-images').getPublicUrl(selected.image_path).data.publicUrl
+      }
+      // Cloud — use signed URL (bucket is private)
+      const { data, error } = await supabase.storage
+        .from('offering-images')
+        .createSignedUrl(selected.image_path, 3600)
+      if (error) return null
+      return data?.signedUrl || null
+    },
+    enabled: !!selected?.image_path,
+  })
 
   const approveMutation = useMutation({
     mutationFn: async (id: number) => {
