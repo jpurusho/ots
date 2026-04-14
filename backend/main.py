@@ -441,9 +441,15 @@ async def import_from_drive(req: DriveImportRequest):
     }
 
 
+def _html_to_pdf(html_content: str) -> bytes:
+    """Convert HTML string to PDF bytes using WeasyPrint."""
+    from weasyprint import HTML
+    return HTML(string=html_content).write_pdf()
+
+
 @app.post("/api/drive/upload-report")
 async def upload_report_to_drive(req: DriveUploadReportRequest):
-    """Upload a generated report to Google Drive reports folder."""
+    """Upload a generated report as PDF to Google Drive reports folder."""
     creds = _get_setting("google_drive_credentials")
     if not creds:
         raise HTTPException(400, "No service account credentials configured")
@@ -454,9 +460,20 @@ async def upload_report_to_drive(req: DriveUploadReportRequest):
 
     import base64
     try:
-        content = base64.b64decode(req.content_base64)
+        html_content = base64.b64decode(req.content_base64).decode('utf-8')
+
+        # Convert HTML to PDF
+        pdf_bytes = _html_to_pdf(html_content)
+
+        # Change filename extension to .pdf
+        filename = req.filename
+        if filename.endswith('.html'):
+            filename = filename[:-5] + '.pdf'
+        elif not filename.endswith('.pdf'):
+            filename = filename + '.pdf'
+
         service = get_drive_service(creds)
-        result = upload_to_drive(service, folder_id, req.filename, content, req.mime_type)
+        result = upload_to_drive(service, folder_id, filename, pdf_bytes, 'application/pdf')
         return {
             "success": True,
             "file_id": result.get("id"),
