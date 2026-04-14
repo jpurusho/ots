@@ -576,20 +576,27 @@ export function ReviewPage() {
         <span className="text-[10px] text-muted">{offerings?.length || 0} of {rawOfferings?.length || 0}</span>
       </div>
 
-      {/* Offering list strip — clickable thumbnails to jump to any offering */}
+      {/* Offering list — wrapping grid for many items, horizontal strip for few */}
       {offerings && offerings.length > 1 && (
-        <div className="flex gap-1 overflow-x-auto pb-1">
+        <div className={offerings.length > 8
+          ? 'flex flex-wrap gap-1'
+          : 'flex gap-1 overflow-x-auto pb-1'
+        }>
           {offerings.map(o => {
             const t = (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
+            const dateLabel = o.offering_date
+              ? (o.offering_date.includes('/')
+                ? o.offering_date.replace(/\/\d{4}$/, '') // MM/DD only
+                : o.offering_date.substring(5)) // MM-DD
+              : (o.filename?.substring(0, 8) || '?')
             return (
               <button key={o.id} onClick={() => { setSelectedId(o.id); setEditMode(false); resetZoom() }}
-                className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] border transition-colors cursor-pointer ${
+                className={`flex-shrink-0 px-2 py-1 rounded text-[10px] border transition-colors cursor-pointer ${
                   selected?.id === o.id
-                    ? 'border-primary bg-primary/10 text-primary'
+                    ? 'border-primary bg-primary/10 text-primary font-medium'
                     : 'border-border hover:border-primary/30 text-muted'
                 }`}>
-                <div className="font-medium">{o.offering_date ? (o.offering_date.includes('/') ? o.offering_date : o.offering_date.substring(5)) : o.filename?.substring(0, 10)}</div>
-                {t > 0 && <div className="text-[9px]">${t.toFixed(0)}</div>}
+                {dateLabel}{t > 0 ? ` $${t.toFixed(0)}` : ''}
               </button>
             )
           })}
