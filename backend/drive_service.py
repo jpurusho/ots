@@ -90,6 +90,70 @@ def upload_to_drive(service, folder_id: str, filename: str, content: bytes,
     return file
 
 
+def list_drive_folders(service, parent_id: str = 'root') -> list[dict]:
+    """List subfolders in a Drive folder (or root/shared drives)."""
+    results = []
+
+    # If root, also list shared drives
+    if parent_id == 'root':
+        try:
+            drives = service.drives().list(pageSize=50).execute()
+            for d in drives.get('drives', []):
+                results.append({
+                    'id': d['id'],
+                    'name': d['name'],
+                    'type': 'shared_drive',
+                })
+        except Exception:
+            pass
+
+    # List folders in parent
+    query = f"'{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    page_token = None
+    while True:
+        response = service.files().list(
+            q=query,
+            fields="nextPageToken, files(id, name)",
+            pageSize=100,
+            pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute()
+        for f in response.get('files', []):
+            results.append({
+                'id': f['id'],
+                'name': f['name'],
+                'type': 'folder',
+            })
+        page_token = response.get('nextPageToken')
+        if not page_token:
+            break
+
+    return sorted(results, key=lambda x: x['name'].lower())
+
+
+def get_folder_path(service, folder_id: str) -> str:
+    """Get the full path of a folder by walking up parents."""
+    parts = []
+    current = folder_id
+    for _ in range(10):  # max depth
+        try:
+            f = service.files().get(
+                fileId=current,
+                fields='id, name, parents',
+                supportsAllDrives=True,
+            ).execute()
+            parts.append(f.get('name', ''))
+            parents = f.get('parents', [])
+            if not parents:
+                break
+            current = parents[0]
+        except Exception:
+            break
+    parts.reverse()
+    return ' / '.join(parts) if parts else folder_id
+
+
 def test_drive_connection(credentials_json: str, folder_id: str) -> dict:
     """Test Drive connection and folder access."""
     try:

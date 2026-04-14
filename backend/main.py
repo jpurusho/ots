@@ -259,6 +259,7 @@ async def scan_all_pending():
 from drive_service import (
     get_drive_service, list_drive_images, download_drive_file,
     upload_to_drive, test_drive_connection, compute_file_hash,
+    list_drive_folders, get_folder_path,
 )
 
 
@@ -281,6 +282,24 @@ class DriveUploadReportRequest(BaseModel):
     filename: str
     content_base64: str
     mime_type: str = "application/pdf"
+
+
+@app.get("/api/drive/folders")
+async def browse_drive_folders(parent: str = "root"):
+    """Browse Drive folders for the folder picker."""
+    creds = _get_setting("google_drive_credentials")
+    if not creds:
+        raise HTTPException(400, "No service account credentials configured")
+    try:
+        service = get_drive_service(creds)
+        folders = list_drive_folders(service, parent)
+        # Get current folder path if not root
+        path = ""
+        if parent != "root":
+            path = get_folder_path(service, parent)
+        return {"folders": folders, "parent": parent, "path": path}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to browse folders: {e}")
 
 
 @app.post("/api/drive/test")

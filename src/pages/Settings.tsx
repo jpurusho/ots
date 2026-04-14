@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X } from 'lucide-react'
+import { DriveFolderPicker } from '@/components/DriveFolderPicker'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -27,6 +28,8 @@ const TEXTAREA_FIELDS = ['google_drive_credentials']
 const SENSITIVE_FIELDS = ['google_drive_credentials', 'smtp_password']
 // Fields that allow file upload (read JSON file from filesystem)
 const FILE_PICKER_FIELDS = ['google_drive_credentials']
+// Fields that use Drive folder picker
+const FOLDER_PICKER_FIELDS = ['drive_images_folder_id', 'drive_reports_folder_id']
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
@@ -35,6 +38,8 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [showSensitive, setShowSensitive] = useState<Record<string, boolean>>({})
   const [testResult, setTestResult] = useState<{ key: string; success: boolean; message: string } | null>(null)
+  const [folderPicker, setFolderPicker] = useState<string | null>(null) // which field's picker is open
+  const [folderPaths, setFolderPaths] = useState<Record<string, string>>({})
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -272,6 +277,39 @@ export function SettingsPage() {
                         placeholder="Paste JSON here or use Browse button above"
                         className="w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background resize-none font-mono"
                       />
+                    </div>
+                  ) : FOLDER_PICKER_FIELDS.includes(setting.key) ? (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input type="text" readOnly
+                          value={folderPaths[setting.key] || formValues[setting.key] || ''}
+                          placeholder="Select a folder..."
+                          className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background cursor-default"
+                        />
+                        <button onClick={() => setFolderPicker(folderPicker === setting.key ? null : setting.key)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                          <FolderOpen className="w-4 h-4" /> Browse
+                        </button>
+                        {formValues[setting.key] && (
+                          <button onClick={() => { setFormValues(v => ({ ...v, [setting.key]: '' })); setFolderPaths(p => ({ ...p, [setting.key]: '' })) }}
+                            className="p-1.5 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      {formValues[setting.key] && !folderPaths[setting.key] && (
+                        <p className="text-[10px] text-muted font-mono">ID: {formValues[setting.key]}</p>
+                      )}
+                      {folderPicker === setting.key && (
+                        <DriveFolderPicker
+                          onSelect={(id, path) => {
+                            setFormValues(v => ({ ...v, [setting.key]: id }))
+                            setFolderPaths(p => ({ ...p, [setting.key]: path }))
+                            setFolderPicker(null)
+                          }}
+                          onCancel={() => setFolderPicker(null)}
+                        />
+                      )}
                     </div>
                   ) : (
                     <input
