@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
@@ -213,19 +213,24 @@ export function ReportsPage() {
     if (viewMode !== 'monthly') return []
     const sundays: string[] = []
     const today = new Date()
-    today.setHours(23, 59, 59) // include today
+    today.setHours(23, 59, 59)
     const d = new Date(year, month, 1)
     while (d.getMonth() === month) {
-      if (d.getDay() === 0 && d <= today) { // Sunday and not in the future
+      if (d.getDay() === 0 && d <= today) {
         const mm = String(d.getMonth() + 1).padStart(2, '0')
         const dd = String(d.getDate()).padStart(2, '0')
         sundays.push(`${mm}/${dd}/${d.getFullYear()}`)
       }
       d.setDate(d.getDate() + 1)
     }
-    // Filter out Sundays that have offerings
-    const offeringDates = new Set(offerings.map(o => o.offering_date))
-    return sundays.filter(s => !offeringDates.has(s))
+    // Compare by parsed date (not string) to handle format differences
+    const offeringTimestamps = new Set(
+      offerings.map(o => parseOfferingDate(o.offering_date)?.toDateString()).filter(Boolean)
+    )
+    return sundays.filter(s => {
+      const parsed = parseOfferingDate(s)
+      return parsed && !offeringTimestamps.has(parsed.toDateString())
+    })
   }, [offerings, month, year, viewMode])
 
   // Merge offerings and missing Sundays for display
@@ -495,30 +500,28 @@ export function ReportsPage() {
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border">
                   {displayRows.map((row) => {
                     if (row.type === 'missing') {
                       return (
-                        <tbody key={`missing-${row.date}`}>
-                          <tr className="bg-warning/5 border-b border-border">
-                            <td className="px-3 py-2 font-medium text-warning">
-                              <div className="flex items-center gap-1.5">
-                                <span className="w-3 h-3 rounded-full bg-warning/30 flex-shrink-0" />
-                                {row.date}
-                              </div>
-                            </td>
-                            <td colSpan={6} className="px-3 py-2 text-xs text-warning italic">
-                              No offering recorded for this Sunday
-                            </td>
-                          </tr>
-                        </tbody>
+                        <tr key={`missing-${row.date}`} className="bg-warning/5">
+                          <td className="px-3 py-2 font-medium text-warning">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-3 h-3 rounded-full bg-warning/30 flex-shrink-0" />
+                              {row.date}
+                            </div>
+                          </td>
+                          <td colSpan={6} className="px-3 py-2 text-xs text-warning italic">
+                            No offering recorded for this Sunday
+                          </td>
+                        </tr>
                       )
                     }
                     const o = row.data
                     return (
-                      <tbody key={o.id}>
+                      <React.Fragment key={o.id}>
                         <tr onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
-                          className="hover:bg-muted-foreground/5 cursor-pointer border-b border-border">
+                          className="hover:bg-muted-foreground/5 cursor-pointer">
                           <td className="px-3 py-2.5 font-medium">
                             <div className="flex items-center gap-1.5">
                               {expandedId === o.id ? <ChevronUp className="w-3 h-3 text-muted" /> : <ChevronDown className="w-3 h-3 text-muted" />}
@@ -534,7 +537,7 @@ export function ReportsPage() {
                         </tr>
                         {expandedId === o.id && (
                           <tr>
-                            <td colSpan={7} className="px-4 py-3 bg-card/50 border-b border-border">
+                            <td colSpan={7} className="px-4 py-3 bg-card/50">
                               <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-1 text-xs">
                                   <p className="font-medium text-sm mb-2">Week of {formatDate(o.offering_date)}</p>
@@ -560,7 +563,7 @@ export function ReportsPage() {
                             </td>
                           </tr>
                         )}
-                      </tbody>
+                      </React.Fragment>
                     )
                   })}
                 </tbody>
