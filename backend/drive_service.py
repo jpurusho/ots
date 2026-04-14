@@ -94,8 +94,8 @@ def list_drive_folders(service, parent_id: str = 'root') -> list[dict]:
     """List subfolders in a Drive folder (or root/shared drives)."""
     results = []
 
-    # If root, also list shared drives
     if parent_id == 'root':
+        # List shared drives
         try:
             drives = service.drives().list(pageSize=50).execute()
             for d in drives.get('drives', []):
@@ -107,27 +107,64 @@ def list_drive_folders(service, parent_id: str = 'root') -> list[dict]:
         except Exception:
             pass
 
-    # List folders in parent
-    query = f"'{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-    page_token = None
-    while True:
-        response = service.files().list(
-            q=query,
-            fields="nextPageToken, files(id, name)",
-            pageSize=100,
-            pageToken=page_token,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        ).execute()
-        for f in response.get('files', []):
-            results.append({
-                'id': f['id'],
-                'name': f['name'],
-                'type': 'folder',
-            })
-        page_token = response.get('nextPageToken')
-        if not page_token:
-            break
+        # List folders shared with the service account
+        try:
+            response = service.files().list(
+                q="mimeType = 'application/vnd.google-apps.folder' and sharedWithMe = true and trashed = false",
+                fields="files(id, name)",
+                pageSize=100,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ).execute()
+            for f in response.get('files', []):
+                # Avoid duplicates (folder might also be in a shared drive)
+                if not any(r['id'] == f['id'] for r in results):
+                    results.append({
+                        'id': f['id'],
+                        'name': f['name'],
+                        'type': 'shared_folder',
+                    })
+        except Exception:
+            pass
+
+        # Also list folders in the service account's own Drive root
+        try:
+            response = service.files().list(
+                q="'root' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                fields="files(id, name)",
+                pageSize=100,
+            ).execute()
+            for f in response.get('files', []):
+                if not any(r['id'] == f['id'] for r in results):
+                    results.append({
+                        'id': f['id'],
+                        'name': f['name'],
+                        'type': 'folder',
+                    })
+        except Exception:
+            pass
+    else:
+        # List subfolders in the specified parent
+        query = f"'{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        page_token = None
+        while True:
+            response = service.files().list(
+                q=query,
+                fields="nextPageToken, files(id, name)",
+                pageSize=100,
+                pageToken=page_token,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ).execute()
+            for f in response.get('files', []):
+                results.append({
+                    'id': f['id'],
+                    'name': f['name'],
+                    'type': 'folder',
+                })
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
 
     return sorted(results, key=lambda x: x['name'].lower())
 
