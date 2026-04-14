@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { UploadProvider } from '@/lib/upload-manager'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/pages/Login'
 import { DashboardPage } from '@/pages/Dashboard'
@@ -39,19 +40,21 @@ function AuthGate() {
   }
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<DashboardPage />} />
-        <Route path="offerings" element={<OfferingsPage />} />
-        <Route path="manual-entry" element={<ManualEntryPage />} />
-        <Route path="review" element={<ReviewPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="checks" element={<ChecksPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="activity" element={<ActivityPage />} />
-      </Route>
-    </Routes>
+    <UploadProvider>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="offerings" element={<OfferingsPage />} />
+          <Route path="manual-entry" element={<ManualEntryPage />} />
+          <Route path="review" element={<ReviewPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="checks" element={<ChecksPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="users" element={<UsersPage />} />
+          <Route path="activity" element={<ActivityPage />} />
+        </Route>
+      </Routes>
+    </UploadProvider>
   )
 }
 

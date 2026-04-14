@@ -1,8 +1,10 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '@/lib/auth-context'
+import { useUploadManager } from '@/lib/upload-manager'
 import {
   LayoutDashboard, Upload, ClipboardCheck, FileText,
   Settings, Users, Activity, LogOut, PenLine, Receipt,
+  Loader2, Sparkles,
 } from 'lucide-react'
 
 const navItems = [
@@ -22,6 +24,7 @@ const adminItems = [
 
 export function Layout() {
   const { appUser, user, signOut } = useAuth()
+  const { state: uploadState } = useUploadManager()
   const isAdmin = appUser?.role === 'admin'
 
   return (
@@ -49,6 +52,13 @@ export function Layout() {
             >
               <item.icon className="w-4 h-4" />
               {item.label}
+              {/* Show upload count badge on Offerings nav item */}
+              {item.to === '/offerings' && uploadState.uploading && (
+                <span className="ml-auto flex items-center gap-1 text-[10px] text-primary">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  {uploadState.current}/{uploadState.total}
+                </span>
+              )}
             </NavLink>
           ))}
 
@@ -78,6 +88,27 @@ export function Layout() {
             </>
           )}
         </nav>
+
+        {/* Global upload progress (visible from any page) */}
+        {uploadState.uploading && (
+          <div className="px-3 pb-2">
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                <span className="text-[11px] font-medium text-primary">Uploading & Scanning</span>
+              </div>
+              <div className="h-1.5 bg-border rounded-full overflow-hidden mb-1">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${uploadState.total > 0 ? (uploadState.current / uploadState.total) * 100 : 0}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-muted truncate">
+                {uploadState.current}/{uploadState.total} — {uploadState.currentFile}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* User section */}
         <div className="p-3 border-t border-border">
