@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import {
   FileText, Download, Loader2, ChevronLeft, ChevronRight, Printer,
   ExternalLink, Share2, ChevronDown, ChevronUp, ArrowUpDown, Search,
+  CalendarRange,
 } from 'lucide-react'
 
 interface ApprovedOffering {
@@ -23,11 +24,12 @@ interface ApprovedOffering {
 
 type SortKey = 'offering_date' | 'general' | 'cash' | 'sunday_school' | 'building_fund' | 'misc' | 'total'
 type SortDir = 'asc' | 'desc'
+type ViewMode = 'monthly' | 'range'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
 
-const COLUMNS: { key: SortKey; label: string; shortLabel?: string }[] = [
+const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'offering_date', label: 'Date' },
   { key: 'general', label: 'General' },
   { key: 'cash', label: 'Cash' },
@@ -54,15 +56,83 @@ const formatDate = (d: string | null) => {
 }
 
 const fmt = (n: number) => n > 0 ? `$${n.toFixed(2)}` : '—'
-
 const rowTotal = (o: ApprovedOffering) =>
   (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
+
+// Shared print helper
+function printHtml(title: string, subtitle: string, bodyHtml: string) {
+  const html = `<!DOCTYPE html><html><head><title>${title}</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 40px; color: #111; max-width: 800px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 14px; color: #666; font-weight: normal; margin: 0 0 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; }
+  th { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #333; }
+  .left { text-align: left; } .right { text-align: right; }
+  tfoot td { border-top: 2px solid #333; font-weight: bold; }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 16px; max-width: 420px; }
+  .card h3 { margin: 0 0 2px; font-size: 15px; }
+  .card h4 { margin: 0 0 12px; font-size: 12px; color: #666; font-weight: normal; }
+  .card .row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee; font-size: 13px; }
+  .card .total-row { border-top: 2px solid #333; border-bottom: none; font-weight: bold; font-size: 14px; margin-top: 4px; padding-top: 8px; }
+  .footer { margin-top: 30px; font-size: 10px; color: #999; }
+  .cards-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media print { body { margin: 20px; } .cards-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media print and (max-width: 600px) { .cards-grid { grid-template-columns: 1fr; } }
+</style></head><body>
+<h1>${title}</h1><h2>${subtitle}</h2>
+${bodyHtml}
+<p class="footer">Generated ${new Date().toLocaleDateString()} | OTS</p>
+</body></html>`
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300) }
+}
+
+function buildOfferingCard(churchName: string, o: ApprovedOffering): string {
+  const t = rowTotal(o)
+  return `<div class="card">
+    <h3>${churchName}</h3>
+    <h4>Week of ${formatDate(o.offering_date)}</h4>
+    ${o.general > 0 ? `<div class="row"><span>General (Checks)</span><span>$${o.general.toFixed(2)}</span></div>` : ''}
+    ${o.cash > 0 ? `<div class="row"><span>Cash (Denominations)</span><span>$${o.cash.toFixed(2)}</span></div>` : ''}
+    ${o.sunday_school > 0 ? `<div class="row"><span>Sunday School</span><span>$${o.sunday_school.toFixed(2)}</span></div>` : ''}
+    ${o.building_fund > 0 ? `<div class="row"><span>Building Fund</span><span>$${o.building_fund.toFixed(2)}</span></div>` : ''}
+    ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFixed(2)}</span></div>` : ''}
+    <div class="row total-row"><span>Total</span><span>$${t.toFixed(2)}</span></div>
+  </div>`
+}
+
+function buildReportTable(offerings: ApprovedOffering[], grandTotal: Record<string, number>, grandTotalSum: number): string {
+  const rows = offerings.map(o => `<tr>
+    <td class="left">${formatDate(o.offering_date)}</td>
+    <td class="right">${fmt(o.general)}</td><td class="right">${fmt(o.cash)}</td>
+    <td class="right">${fmt(o.sunday_school)}</td><td class="right">${fmt(o.building_fund)}</td>
+    <td class="right">${fmt(o.misc)}</td>
+    <td class="right"><strong>$${rowTotal(o).toFixed(2)}</strong></td>
+  </tr>`).join('')
+
+  return `<table><thead><tr>
+    <th class="left">Date</th><th class="right">General</th><th class="right">Cash</th>
+    <th class="right">Sunday School</th><th class="right">Building Fund</th>
+    <th class="right">Misc</th><th class="right">Total</th>
+  </tr></thead><tbody>${rows}</tbody><tfoot><tr>
+    <td class="left"><strong>Total</strong></td>
+    <td class="right">$${grandTotal.general.toFixed(2)}</td><td class="right">$${grandTotal.cash.toFixed(2)}</td>
+    <td class="right">$${grandTotal.sunday_school.toFixed(2)}</td><td class="right">$${grandTotal.building_fund.toFixed(2)}</td>
+    <td class="right">$${grandTotal.misc.toFixed(2)}</td>
+    <td class="right"><strong>$${grandTotalSum.toFixed(2)}</strong></td>
+  </tr></tfoot></table>`
+}
 
 export function ReportsPage() {
   const navigate = useNavigate()
   const now = new Date()
+  const [viewMode, setViewMode] = useState<ViewMode>('monthly')
   const [month, setMonth] = useState(now.getMonth())
   const [year, setYear] = useState(now.getFullYear())
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('offering_date')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -91,10 +161,18 @@ export function ReportsPage() {
   const offerings = useMemo(() => {
     let filtered = (allApproved || []).filter(o => {
       const d = parseOfferingDate(o.offering_date)
-      return d && d.getMonth() === month && d.getFullYear() === year
+      if (!d) return false
+      if (viewMode === 'monthly') {
+        return d.getMonth() === month && d.getFullYear() === year
+      } else {
+        const from = dateFrom ? new Date(dateFrom) : null
+        const to = dateTo ? new Date(dateTo + 'T23:59:59') : null
+        if (from && d < from) return false
+        if (to && d > to) return false
+        return true
+      }
     })
 
-    // Text filter
     if (filterText) {
       const q = filterText.toLowerCase()
       filtered = filtered.filter(o =>
@@ -105,82 +183,60 @@ export function ReportsPage() {
       )
     }
 
-    // Sort
     filtered.sort((a, b) => {
       let va: number, vb: number
       if (sortKey === 'offering_date') {
         va = parseOfferingDate(a.offering_date)?.getTime() || 0
         vb = parseOfferingDate(b.offering_date)?.getTime() || 0
       } else if (sortKey === 'total') {
-        va = rowTotal(a)
-        vb = rowTotal(b)
+        va = rowTotal(a); vb = rowTotal(b)
       } else {
-        va = (a[sortKey] as number) || 0
-        vb = (b[sortKey] as number) || 0
+        va = (a[sortKey] as number) || 0; vb = (b[sortKey] as number) || 0
       }
       return sortDir === 'asc' ? va - vb : vb - va
     })
-
     return filtered
-  }, [allApproved, month, year, sortKey, sortDir, filterText])
+  }, [allApproved, month, year, dateFrom, dateTo, viewMode, sortKey, sortDir, filterText])
 
   const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortKey(key)
-      setSortDir(key === 'offering_date' ? 'asc' : 'desc')
-    }
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir(key === 'offering_date' ? 'asc' : 'desc') }
   }
 
   const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }
   const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }
 
   const grandTotal = offerings.reduce((acc, o) => ({
-    general: acc.general + (o.general || 0),
-    cash: acc.cash + (o.cash || 0),
+    general: acc.general + (o.general || 0), cash: acc.cash + (o.cash || 0),
     sunday_school: acc.sunday_school + (o.sunday_school || 0),
-    building_fund: acc.building_fund + (o.building_fund || 0),
-    misc: acc.misc + (o.misc || 0),
+    building_fund: acc.building_fund + (o.building_fund || 0), misc: acc.misc + (o.misc || 0),
   }), { general: 0, cash: 0, sunday_school: 0, building_fund: 0, misc: 0 })
 
   const grandTotalSum = grandTotal.general + grandTotal.cash + grandTotal.sunday_school +
     grandTotal.building_fund + grandTotal.misc
 
-  const printPdf = () => {
-    const title = churchName || 'Offering Report'
-    const html = `<!DOCTYPE html>
-<html><head><title>${title} — ${MONTHS[month]} ${year}</title>
-<style>
-  body { font-family: system-ui, sans-serif; margin: 40px; color: #111; }
-  h1 { font-size: 18px; margin-bottom: 4px; }
-  h2 { font-size: 14px; color: #666; font-weight: normal; margin-top: 0; }
-  table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
-  th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; text-align: right; }
-  th { text-align: right; font-weight: 600; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #333; }
-  th:first-child, td:first-child { text-align: left; }
-  tfoot td { border-top: 2px solid #333; font-weight: bold; }
-  @media print { body { margin: 20px; } }
-</style></head><body>
-<h1>${title}</h1><h2>${MONTHS[month]} ${year}</h2>
-<table><thead><tr>
-  <th style="text-align:left">Date</th><th>General</th><th>Cash</th><th>Sunday School</th><th>Building Fund</th><th>Misc</th><th>Total</th>
-</tr></thead><tbody>${offerings.map(o => `<tr>
-  <td style="text-align:left">${formatDate(o.offering_date)}</td>
-  <td>${fmt(o.general)}</td><td>${fmt(o.cash)}</td><td>${fmt(o.sunday_school)}</td>
-  <td>${fmt(o.building_fund)}</td><td>${fmt(o.misc)}</td>
-  <td><strong>$${rowTotal(o).toFixed(2)}</strong></td>
-</tr>`).join('')}</tbody><tfoot><tr>
-  <td style="text-align:left"><strong>Total</strong></td>
-  <td>$${grandTotal.general.toFixed(2)}</td><td>$${grandTotal.cash.toFixed(2)}</td>
-  <td>$${grandTotal.sunday_school.toFixed(2)}</td><td>$${grandTotal.building_fund.toFixed(2)}</td>
-  <td>$${grandTotal.misc.toFixed(2)}</td>
-  <td><strong>$${grandTotalSum.toFixed(2)}</strong></td>
-</tr></tfoot></table>
-<p style="margin-top:30px;font-size:11px;color:#999">Generated ${new Date().toLocaleDateString()} | OTS v2</p>
-</body></html>`
-    const w = window.open('', '_blank')
-    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300) }
+  const periodLabel = viewMode === 'monthly'
+    ? `${MONTHS[month]} ${year}`
+    : `${dateFrom || 'Start'} to ${dateTo || 'End'}`
+
+  const title = churchName || 'Offering Report'
+
+  // Export functions
+  const printReport = () => {
+    printHtml(title, periodLabel, buildReportTable(offerings, grandTotal, grandTotalSum))
+  }
+
+  const printWeekCard = (o: ApprovedOffering) => {
+    printHtml(title, `Week of ${formatDate(o.offering_date)}`, buildOfferingCard(title, o))
+  }
+
+  const printAllCards = () => {
+    const cards = offerings.map(o => buildOfferingCard(title, o)).join('')
+    printHtml(title, periodLabel,
+      `<div class="cards-grid">${cards}</div>
+       <div style="margin-top:20px;padding-top:12px;border-top:2px solid #333;font-size:14px;font-weight:bold">
+         Grand Total: $${grandTotalSum.toFixed(2)} (${offerings.length} week${offerings.length !== 1 ? 's' : ''})
+       </div>`)
   }
 
   const exportCsv = () => {
@@ -191,34 +247,8 @@ export function ReportsPage() {
     const totalsRow = `Total,${grandTotal.general},${grandTotal.cash},${grandTotal.sunday_school},${grandTotal.building_fund},${grandTotal.misc},${grandTotalSum}`
     const blob = new Blob([headers + rows + '\n' + totalsRow], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `offerings_${MONTHS[month].toLowerCase()}_${year}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const printCard = (o: ApprovedOffering) => {
-    const cardHtml = `<!DOCTYPE html><html><head><title>Offering ${formatDate(o.offering_date)}</title>
-<style>body{font-family:system-ui,sans-serif;margin:40px;max-width:500px;}
-h2{margin:0 0 4px;font-size:16px;}h3{margin:0;color:#666;font-weight:normal;font-size:13px;}
-.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee;font-size:13px;}
-.total{font-weight:bold;font-size:15px;border-top:2px solid #333;margin-top:4px;padding-top:8px;}
-.footer{margin-top:20px;font-size:10px;color:#999;}
-</style></head><body>
-<h2>${churchName || 'Weekly Offering'}</h2><h3>Week of ${formatDate(o.offering_date)}</h3>
-<div style="margin-top:16px">
-${o.general > 0 ? `<div class="row"><span>General (Checks)</span><span>$${o.general.toFixed(2)}</span></div>` : ''}
-${o.cash > 0 ? `<div class="row"><span>Cash (Denominations)</span><span>$${o.cash.toFixed(2)}</span></div>` : ''}
-${o.sunday_school > 0 ? `<div class="row"><span>Sunday School</span><span>$${o.sunday_school.toFixed(2)}</span></div>` : ''}
-${o.building_fund > 0 ? `<div class="row"><span>Building Fund</span><span>$${o.building_fund.toFixed(2)}</span></div>` : ''}
-${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFixed(2)}</span></div>` : ''}
-<div class="row total"><span>Total</span><span>$${rowTotal(o).toFixed(2)}</span></div>
-</div>
-<p class="footer">Generated ${new Date().toLocaleDateString()} | OTS</p>
-</body></html>`
-    const w = window.open('', '_blank')
-    if (w) { w.document.write(cardHtml); w.document.close(); setTimeout(() => w.print(), 300) }
+    const a = document.createElement('a'); a.href = url; a.download = `offerings_${periodLabel.replace(/\s+/g, '_').toLowerCase()}.csv`
+    a.click(); URL.revokeObjectURL(url)
   }
 
   return (
@@ -226,22 +256,46 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Reports</h1>
-          <p className="text-muted text-sm">{churchName || 'Offerings'} — Monthly Report</p>
+          <p className="text-muted text-sm">{title} — {viewMode === 'monthly' ? 'Monthly' : 'Date Range'} Report</p>
         </div>
       </div>
 
-      {/* Month/Year picker */}
-      <div className="flex items-center justify-center gap-4">
-        <button onClick={prevMonth} className="p-2 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        <div className="text-center min-w-[180px]">
-          <p className="text-lg font-bold">{MONTHS[month]} {year}</p>
-          <p className="text-xs text-muted">{offerings.length} offerings</p>
+      {/* View mode toggle + date controls */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex gap-1 bg-card border border-border rounded-lg p-0.5">
+          <button onClick={() => setViewMode('monthly')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors ${
+              viewMode === 'monthly' ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
+            }`}>Monthly</button>
+          <button onClick={() => setViewMode('range')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors flex items-center gap-1 ${
+              viewMode === 'range' ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
+            }`}><CalendarRange className="w-3 h-3" /> Date Range</button>
         </div>
-        <button onClick={nextMonth} className="p-2 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
-          <ChevronRight className="w-4 h-4" />
-        </button>
+
+        {viewMode === 'monthly' ? (
+          <div className="flex items-center gap-3">
+            <button onClick={prevMonth} className="p-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="text-center min-w-[150px]">
+              <p className="text-sm font-bold">{MONTHS[month]} {year}</p>
+            </div>
+            <button onClick={nextMonth} className="p-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+            <span className="text-xs text-muted">to</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+          </div>
+        )}
+
+        <span className="text-xs text-muted">{offerings.length} offering{offerings.length !== 1 ? 's' : ''}</span>
       </div>
 
       {isLoading ? (
@@ -265,26 +319,55 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
             ))}
           </div>
 
+          {/* Year-to-date summary */}
+          {(() => {
+            const currentYear = viewMode === 'monthly' ? year : new Date().getFullYear()
+            const ytdOfferings = (allApproved || []).filter(o => {
+              const d = parseOfferingDate(o.offering_date)
+              return d && d.getFullYear() === currentYear
+            })
+            const ytd = ytdOfferings.reduce((acc, o) => ({
+              general: acc.general + (o.general || 0), cash: acc.cash + (o.cash || 0),
+              sunday_school: acc.sunday_school + (o.sunday_school || 0),
+              building_fund: acc.building_fund + (o.building_fund || 0), misc: acc.misc + (o.misc || 0),
+            }), { general: 0, cash: 0, sunday_school: 0, building_fund: 0, misc: 0 })
+            const ytdTotal = ytd.general + ytd.cash + ytd.sunday_school + ytd.building_fund + ytd.misc
+
+            return ytdTotal > 0 ? (
+              <div className="rounded-lg border border-border/50 bg-card/50 px-4 py-2.5 flex items-center justify-between">
+                <span className="text-xs text-muted">Year-to-Date ({currentYear}): {ytdOfferings.length} offerings</span>
+                <div className="flex items-center gap-4 text-xs">
+                  <span>General: <strong>${ytd.general.toFixed(0)}</strong></span>
+                  <span>Cash: <strong>${ytd.cash.toFixed(0)}</strong></span>
+                  <span>SS: <strong>${ytd.sunday_school.toFixed(0)}</strong></span>
+                  <span>BF: <strong>${ytd.building_fund.toFixed(0)}</strong></span>
+                  {ytd.misc > 0 && <span>Misc: <strong>${ytd.misc.toFixed(0)}</strong></span>}
+                  <span className="text-primary font-bold">Total: ${ytdTotal.toFixed(2)}</span>
+                </div>
+              </div>
+            ) : null
+          })()}
+
           {/* Filter + Export bar */}
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
-              <input
-                type="text"
-                placeholder="Filter by date, filename, notes..."
-                value={filterText}
-                onChange={e => setFilterText(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border border-border bg-background"
-              />
+              <input type="text" placeholder="Filter..."
+                value={filterText} onChange={e => setFilterText(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
             </div>
             <div className="flex gap-2">
-              <button onClick={printPdf}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer">
-                <Printer className="w-4 h-4" /> Export PDF
+              <button onClick={printReport}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer">
+                <Printer className="w-3.5 h-3.5" /> Report PDF
+              </button>
+              <button onClick={printAllCards}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
+                <Share2 className="w-3.5 h-3.5" /> All Cards
               </button>
               <button onClick={exportCsv}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
-                <Download className="w-4 h-4" /> CSV
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
+                <Download className="w-3.5 h-3.5" /> CSV
               </button>
             </div>
           </div>
@@ -296,8 +379,7 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
                 <thead>
                   <tr className="bg-card border-b border-border">
                     {COLUMNS.map(col => (
-                      <th key={col.key}
-                        onClick={() => toggleSort(col.key)}
+                      <th key={col.key} onClick={() => toggleSort(col.key)}
                         className={`px-4 py-3 text-xs font-medium text-muted cursor-pointer hover:text-foreground select-none transition-colors ${
                           col.key === 'offering_date' ? 'text-left' : 'text-right'
                         }`}>
@@ -313,11 +395,11 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {offerings.map(o => (
                     <tbody key={o.id}>
                       <tr onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
-                        className="hover:bg-muted-foreground/5 cursor-pointer">
+                        className="hover:bg-muted-foreground/5 cursor-pointer border-b border-border">
                         <td className="px-4 py-2.5 font-medium">
                           <div className="flex items-center gap-1.5">
                             {expandedId === o.id ? <ChevronUp className="w-3 h-3 text-muted" /> : <ChevronDown className="w-3 h-3 text-muted" />}
@@ -333,7 +415,7 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
                       </tr>
                       {expandedId === o.id && (
                         <tr>
-                          <td colSpan={7} className="px-4 py-3 bg-card/50">
+                          <td colSpan={7} className="px-4 py-3 bg-card/50 border-b border-border">
                             <div className="flex items-start justify-between gap-4">
                               <div className="space-y-1 text-xs">
                                 <p className="font-medium text-sm mb-2">Week of {formatDate(o.offering_date)}</p>
@@ -350,7 +432,7 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
                                   className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
                                   <ExternalLink className="w-3 h-3" /> View
                                 </button>
-                                <button onClick={e => { e.stopPropagation(); printCard(o) }}
+                                <button onClick={e => { e.stopPropagation(); printWeekCard(o) }}
                                   className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
                                   <Share2 className="w-3 h-3" /> Share Card
                                 </button>
@@ -380,7 +462,7 @@ ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFix
       ) : (
         <div className="rounded-xl border border-border bg-card p-10 text-center">
           <FileText className="w-10 h-10 mx-auto text-muted mb-3" />
-          <p className="text-muted">No approved offerings for {MONTHS[month]} {year}</p>
+          <p className="text-muted">No approved offerings for {periodLabel}</p>
           <p className="text-xs text-muted mt-1">Upload and approve offerings to see them here</p>
         </div>
       )}
