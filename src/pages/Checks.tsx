@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { useAuth } from '@/lib/auth-context'
 import { Loader2, Receipt, Users, DollarSign, Wallet, Printer, ArrowLeft, FileText, Trash2, Search, CalendarRange } from 'lucide-react'
+import { openReport } from '@/lib/print-utils'
 
 interface Check {
   id: number
@@ -42,29 +43,6 @@ function useChurchName() {
   return data || ''
 }
 
-function printReport(title: string, subtitle: string, html: string) {
-  const w = window.open('', '_blank')
-  if (!w) return
-  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
-<style>
-  body { font-family: system-ui, sans-serif; margin: 40px; color: #111; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  h2 { font-size: 14px; color: #666; font-weight: normal; margin: 0 0 20px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; text-align: left; }
-  th { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #333; }
-  .right { text-align: right; }
-  tfoot td { border-top: 2px solid #333; font-weight: bold; }
-  .footer { margin-top: 30px; font-size: 10px; color: #999; }
-  @media print { body { margin: 20px; } }
-</style></head><body>
-<h1>${title}</h1><h2>${subtitle}</h2>
-${html}
-<p class="footer">Generated ${new Date().toLocaleDateString()} | OTS</p>
-</body></html>`)
-  w.document.close()
-  setTimeout(() => w.print(), 300)
-}
 
 export function ChecksPage() {
   const { appUser } = useAuth()
@@ -197,7 +175,7 @@ export function ChecksPage() {
        <td>${c.bank_name || '—'}</td><td class="capitalize">${(c.category || 'general').replace('_', ' ')}</td>
        <td>${c.memo || '—'}</td><td class="right">${fmt(c.amount || 0)}</td></tr>`
     ).join('')
-    printReport(
+    openReport(
       churchName,
       `Contribution Statement — ${contrib.payer_name}`,
       `<table><thead><tr><th>Date</th><th>Check #</th><th>Bank</th><th>Category</th><th>Memo</th><th class="right">Amount</th></tr></thead>
@@ -212,7 +190,7 @@ export function ChecksPage() {
        <td>${c.offering_date || '—'}</td><td class="capitalize">${(c.category || 'general').replace('_', ' ')}</td>
        <td>${c.memo || '—'}</td><td class="right">${fmt(c.amount || 0)}</td></tr>`
     ).join('')
-    printReport(
+    openReport(
       churchName,
       `Check Contributions Report — ${allChecks.length} checks`,
       `<table><thead><tr><th>Payer</th><th>Check #</th><th>Date</th><th>Category</th><th>Memo</th><th class="right">Amount</th></tr></thead>
@@ -227,7 +205,7 @@ export function ChecksPage() {
        <td>${s.firstDate} — ${s.lastDate}</td><td class="right">${fmt(s.total)}</td></tr>`
     ).join('')
     const yearTotal = yearStatements.reduce((s, r) => s + r.total, 0)
-    printReport(
+    openReport(
       churchName,
       `Year-End Contribution Summary — ${statementsYear}`,
       `<table><thead><tr><th>Contributor</th><th style="text-align:center">Checks</th><th>Period</th><th class="right">Total</th></tr></thead>
