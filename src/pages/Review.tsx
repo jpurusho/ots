@@ -302,26 +302,29 @@ export function ReviewPage() {
 
   const resetZoom = () => { setZoom(1); setPan({ x: 0, y: 0 }) }
 
-  // Use signed URLs (private bucket) on cloud, public URLs on local dev
+  // Image URL: public URL for local dev, signed URL for cloud
   const isLocalDev = import.meta.env.VITE_SUPABASE_URL?.includes('127.0.0.1') || import.meta.env.VITE_SUPABASE_URL?.includes('localhost')
 
-  const { data: imageUrl } = useQuery({
-    queryKey: ['offering-image', selected?.image_path, isLocalDev],
+  // For local dev, compute public URL directly (synchronous, no query needed)
+  const localImageUrl = selected?.image_path && isLocalDev
+    ? supabase.storage.from('offering-images').getPublicUrl(selected.image_path).data.publicUrl
+    : null
+
+  // For cloud, use signed URL via query
+  const { data: cloudImageUrl } = useQuery({
+    queryKey: ['offering-image-signed', selected?.image_path],
     queryFn: async () => {
       if (!selected?.image_path) return null
-      if (isLocalDev) {
-        // Local dev — use public URL (local bucket is public)
-        return supabase.storage.from('offering-images').getPublicUrl(selected.image_path).data.publicUrl
-      }
-      // Cloud — use signed URL (bucket is private)
       const { data, error } = await supabase.storage
         .from('offering-images')
         .createSignedUrl(selected.image_path, 3600)
       if (error) return null
       return data?.signedUrl || null
     },
-    enabled: !!selected?.image_path,
+    enabled: !!selected?.image_path && !isLocalDev,
   })
+
+  const imageUrl = isLocalDev ? localImageUrl : cloudImageUrl
 
   const approveMutation = useMutation({
     mutationFn: async (id: number) => {
