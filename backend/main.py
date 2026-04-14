@@ -56,16 +56,19 @@ def get_claude_client() -> anthropic.Anthropic:
         return anthropic.AnthropicBedrock(
             aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
+    # Use custom httpx client to handle SSL issues (corporate proxies, macOS cert issues)
+    import httpx
+    http_client = httpx.Client(verify=False)
     if config["api_key"]:
-        return anthropic.Anthropic(api_key=config["api_key"])
-    return anthropic.Anthropic()  # falls back to ANTHROPIC_API_KEY env var
+        return anthropic.Anthropic(api_key=config["api_key"], http_client=http_client)
+    return anthropic.Anthropic(http_client=http_client)
 
 
 def get_model_id() -> str:
     config = _get_ai_config()
     if config["use_bedrock"]:
         return "us.anthropic.claude-sonnet-4-6"
-    return config["model"] or "claude-sonnet-4-6-20250929"
+    return "claude-sonnet-4-6"
 
 
 @asynccontextmanager
