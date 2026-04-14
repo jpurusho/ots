@@ -61,48 +61,57 @@ const fmt = (n: number) => n > 0 ? `$${n.toFixed(2)}` : '—'
 const rowTotal = (o: ApprovedOffering) =>
   (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
 
-// Shared print helper
-function printHtml(title: string, subtitle: string, bodyHtml: string) {
-  const html = `<!DOCTYPE html><html><head><title>${title}</title>
-<style>
-  body { font-family: system-ui, sans-serif; margin: 40px; color: #111; max-width: 800px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  h2 { font-size: 14px; color: #666; font-weight: normal; margin: 0 0 20px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; }
-  th { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #333; }
-  .left { text-align: left; } .right { text-align: right; }
-  tfoot td { border-top: 2px solid #333; font-weight: bold; }
-  .card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 16px; max-width: 420px; }
-  .card h3 { margin: 0 0 2px; font-size: 15px; }
-  .card h4 { margin: 0 0 12px; font-size: 12px; color: #666; font-weight: normal; }
-  .card .row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee; font-size: 13px; }
-  .card .total-row { border-top: 2px solid #333; border-bottom: none; font-weight: bold; font-size: 14px; margin-top: 4px; padding-top: 8px; }
-  .footer { margin-top: 30px; font-size: 10px; color: #999; }
-  .cards-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-  @media print { body { margin: 20px; } .cards-grid { grid-template-columns: repeat(2, 1fr); } }
-  @media print and (max-width: 600px) { .cards-grid { grid-template-columns: 1fr; } }
-</style></head><body>
-<h1>${title}</h1><h2>${subtitle}</h2>
-${bodyHtml}
-<p class="footer">Generated ${new Date().toLocaleDateString()} | OTS</p>
-</body></html>`
+// Open HTML in new window (no auto-print — user can Cmd+P when ready)
+function openHtml(title: string, subtitle: string, bodyHtml: string) {
+  const html = '<!DOCTYPE html><html><head><title>' + title + '</title>' +
+    '<style>' +
+    'body{font-family:system-ui,sans-serif;margin:40px;color:#1a1a2e;max-width:800px;margin:20px auto}' +
+    '.header{background:#4f46e5;color:white;padding:20px 24px;border-radius:8px 8px 0 0}' +
+    '.header h1{margin:0;font-size:18px;font-weight:600}' +
+    '.header p{margin:4px 0 0;font-size:13px;opacity:0.85}' +
+    '.content{border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden}' +
+    'table{width:100%;border-collapse:collapse;font-size:13px}' +
+    'th{padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1;background:#f1f5f9}' +
+    'th:first-child{text-align:left}' +
+    'td{padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb}' +
+    'td:first-child{text-align:left}' +
+    'tbody tr:nth-child(even){background:#f8fafc}' +
+    'tfoot tr{background:#4f46e5;color:white}' +
+    'tfoot td{font-weight:bold;border:none;padding:10px 12px}' +
+    '.card{border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:16px;max-width:420px;display:inline-block;vertical-align:top;margin-right:16px}' +
+    '.card-header{background:#4f46e5;color:white;padding:14px 18px}' +
+    '.card-header h3{margin:0;font-size:15px}' +
+    '.card-header p{margin:3px 0 0;font-size:11px;opacity:0.85}' +
+    '.card-body{padding:14px 18px}' +
+    '.card-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px}' +
+    '.card-total{display:flex;justify-content:space-between;padding:10px 0 0;margin-top:4px;border-top:2px solid #4f46e5;font-weight:bold;font-size:15px;color:#4f46e5}' +
+    '.footer{margin-top:30px;font-size:10px;color:#94a3b8;text-align:center}' +
+    '.cards-grid{display:flex;flex-wrap:wrap;gap:16px}' +
+    '.print-btn{display:inline-block;margin:16px 0;padding:8px 20px;background:#4f46e5;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer}' +
+    '.print-btn:hover{background:#4338ca}' +
+    '@media print{.print-btn{display:none}}' +
+    '</style></head><body>' +
+    '<div class="header"><h1>' + title + '</h1><p>' + subtitle + '</p></div>' +
+    '<div class="content">' + bodyHtml + '</div>' +
+    '<button class="print-btn" onclick="window.print()">Print / Save as PDF</button>' +
+    '<p class="footer">Generated ' + new Date().toLocaleDateString() + ' | OTS</p>' +
+    '</body></html>'
   const w = window.open('', '_blank')
-  if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300) }
+  if (w) { w.document.write(html); w.document.close() }
 }
 
 function buildOfferingCard(churchName: string, o: ApprovedOffering): string {
   const t = rowTotal(o)
-  return `<div class="card">
-    <h3>${churchName}</h3>
-    <h4>Week of ${formatDate(o.offering_date)}</h4>
-    ${o.general > 0 ? `<div class="row"><span>General (Checks)</span><span>$${o.general.toFixed(2)}</span></div>` : ''}
-    ${o.cash > 0 ? `<div class="row"><span>Cash (Denominations)</span><span>$${o.cash.toFixed(2)}</span></div>` : ''}
-    ${o.sunday_school > 0 ? `<div class="row"><span>Sunday School</span><span>$${o.sunday_school.toFixed(2)}</span></div>` : ''}
-    ${o.building_fund > 0 ? `<div class="row"><span>Building Fund</span><span>$${o.building_fund.toFixed(2)}</span></div>` : ''}
-    ${o.misc > 0 ? `<div class="row"><span>Miscellaneous</span><span>$${o.misc.toFixed(2)}</span></div>` : ''}
-    <div class="row total-row"><span>Total</span><span>$${t.toFixed(2)}</span></div>
-  </div>`
+  return '<div class="card">' +
+    '<div class="card-header"><h3>' + churchName + '</h3><p>Week of ' + formatDate(o.offering_date) + '</p></div>' +
+    '<div class="card-body">' +
+    (o.general > 0 ? '<div class="card-row"><span>General (Checks)</span><span>$' + o.general.toFixed(2) + '</span></div>' : '') +
+    (o.cash > 0 ? '<div class="card-row"><span>Cash (Denominations)</span><span>$' + o.cash.toFixed(2) + '</span></div>' : '') +
+    (o.sunday_school > 0 ? '<div class="card-row"><span>Sunday School</span><span>$' + o.sunday_school.toFixed(2) + '</span></div>' : '') +
+    (o.building_fund > 0 ? '<div class="card-row"><span>Building Fund</span><span>$' + o.building_fund.toFixed(2) + '</span></div>' : '') +
+    (o.misc > 0 ? '<div class="card-row"><span>Miscellaneous</span><span>$' + o.misc.toFixed(2) + '</span></div>' : '') +
+    '<div class="card-total"><span>Total</span><span>$' + t.toFixed(2) + '</span></div>' +
+    '</div></div>'
 }
 
 function buildReportTable(offerings: ApprovedOffering[], grandTotal: Record<string, number>, grandTotalSum: number): string {
@@ -379,16 +388,16 @@ export function ReportsPage() {
 
   // Export functions
   const printReport = () => {
-    printHtml(title, periodLabel, buildReportTable(offerings, grandTotal, grandTotalSum))
+    openHtml(title, periodLabel, buildReportTable(offerings, grandTotal, grandTotalSum))
   }
 
   const printWeekCard = (o: ApprovedOffering) => {
-    printHtml(title, `Week of ${formatDate(o.offering_date)}`, buildOfferingCard(title, o))
+    openHtml(title, `Week of ${formatDate(o.offering_date)}`, buildOfferingCard(title, o))
   }
 
   const printAllCards = () => {
     const cards = offerings.map(o => buildOfferingCard(title, o)).join('')
-    printHtml(title, periodLabel,
+    openHtml(title, periodLabel,
       `<div class="cards-grid">${cards}</div>
        <div style="margin-top:20px;padding-top:12px;border-top:2px solid #333;font-size:14px;font-weight:bold">
          Grand Total: $${grandTotalSum.toFixed(2)} (${offerings.length} week${offerings.length !== 1 ? 's' : ''})
@@ -588,54 +597,55 @@ export function ReportsPage() {
                   if (!recipients) return
                   setEmailSending(true)
 
-                  // Build beautiful HTML email
-                  const emailHtml = `
-<div style="font-family:system-ui,-apple-system,sans-serif;max-width:700px;margin:0 auto;color:#1a1a2e">
-  <div style="background:#4f46e5;color:white;padding:20px 24px;border-radius:8px 8px 0 0">
-    <h1 style="margin:0;font-size:18px;font-weight:600">${title}</h1>
-    <p style="margin:4px 0 0;font-size:13px;opacity:0.85">${periodLabel} — Offering Report</p>
-  </div>
-  <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead>
-        <tr style="background:#f1f5f9">
-          <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1">Date</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1">General</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1">Cash</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1">Sunday School</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1">Building Fund</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1">Misc</th>
-          <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${offerings.map((o, i) => `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'}">
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${formatDate(o.offering_date)}</td>
-          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb">${fmt(o.general)}</td>
-          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb">${fmt(o.cash)}</td>
-          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb">${fmt(o.sunday_school)}</td>
-          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb">${fmt(o.building_fund)}</td>
-          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb">${fmt(o.misc)}</td>
-          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb;font-weight:bold">$${rowTotal(o).toFixed(2)}</td>
-        </tr>`).join('')}
-      </tbody>
-      <tfoot>
-        <tr style="background:#4f46e5;color:white">
-          <td style="padding:10px 12px;font-weight:bold">Total</td>
-          <td style="padding:10px 12px;text-align:right;font-weight:bold">$${grandTotal.general.toFixed(2)}</td>
-          <td style="padding:10px 12px;text-align:right;font-weight:bold">$${grandTotal.cash.toFixed(2)}</td>
-          <td style="padding:10px 12px;text-align:right;font-weight:bold">$${grandTotal.sunday_school.toFixed(2)}</td>
-          <td style="padding:10px 12px;text-align:right;font-weight:bold">$${grandTotal.building_fund.toFixed(2)}</td>
-          <td style="padding:10px 12px;text-align:right;font-weight:bold">$${grandTotal.misc.toFixed(2)}</td>
-          <td style="padding:10px 12px;text-align:right;font-weight:bold">$${grandTotalSum.toFixed(2)}</td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-  <p style="margin-top:16px;font-size:10px;color:#94a3b8;text-align:center">
-    Generated by OTS on ${new Date().toLocaleDateString()}
-  </p>
-</div>`
+                  // Build rows first, then assemble
+                  const thStyle = 'padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1'
+                  const tdStyle = 'padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb'
+                  const tdBold = tdStyle + ';font-weight:bold'
+                  const ftStyle = 'padding:10px 12px;text-align:right;font-weight:bold'
+
+                  const tableRows = offerings.map((o, i) => {
+                    const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc'
+                    return '<tr style="background:' + bg + '">' +
+                      '<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">' + formatDate(o.offering_date) + '</td>' +
+                      '<td style="' + tdStyle + '">' + fmt(o.general) + '</td>' +
+                      '<td style="' + tdStyle + '">' + fmt(o.cash) + '</td>' +
+                      '<td style="' + tdStyle + '">' + fmt(o.sunday_school) + '</td>' +
+                      '<td style="' + tdStyle + '">' + fmt(o.building_fund) + '</td>' +
+                      '<td style="' + tdStyle + '">' + fmt(o.misc) + '</td>' +
+                      '<td style="' + tdBold + '">$' + rowTotal(o).toFixed(2) + '</td>' +
+                      '</tr>'
+                  }).join('')
+
+                  const emailHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;max-width:700px;margin:0 auto;color:#1a1a2e">' +
+                    '<div style="background:#4f46e5;color:white;padding:20px 24px;border-radius:8px 8px 0 0">' +
+                      '<h1 style="margin:0;font-size:18px;font-weight:600">' + title + '</h1>' +
+                      '<p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + ' &mdash; Offering Report</p>' +
+                    '</div>' +
+                    '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">' +
+                      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+                        '<thead><tr style="background:#f1f5f9">' +
+                          '<th style="' + thStyle + ';text-align:left">Date</th>' +
+                          '<th style="' + thStyle + '">General</th>' +
+                          '<th style="' + thStyle + '">Cash</th>' +
+                          '<th style="' + thStyle + '">Sunday School</th>' +
+                          '<th style="' + thStyle + '">Building Fund</th>' +
+                          '<th style="' + thStyle + '">Misc</th>' +
+                          '<th style="' + thStyle + '">Total</th>' +
+                        '</tr></thead>' +
+                        '<tbody>' + tableRows + '</tbody>' +
+                        '<tfoot><tr style="background:#4f46e5;color:white">' +
+                          '<td style="' + ftStyle + ';text-align:left">Total</td>' +
+                          '<td style="' + ftStyle + '">$' + grandTotal.general.toFixed(2) + '</td>' +
+                          '<td style="' + ftStyle + '">$' + grandTotal.cash.toFixed(2) + '</td>' +
+                          '<td style="' + ftStyle + '">$' + grandTotal.sunday_school.toFixed(2) + '</td>' +
+                          '<td style="' + ftStyle + '">$' + grandTotal.building_fund.toFixed(2) + '</td>' +
+                          '<td style="' + ftStyle + '">$' + grandTotal.misc.toFixed(2) + '</td>' +
+                          '<td style="' + ftStyle + '">$' + grandTotalSum.toFixed(2) + '</td>' +
+                        '</tr></tfoot>' +
+                      '</table>' +
+                    '</div>' +
+                    '<p style="margin-top:16px;font-size:10px;color:#94a3b8;text-align:center">Generated by OTS on ' + new Date().toLocaleDateString() + '</p>' +
+                  '</div>'
 
                   try {
                     const resp = await fetch(`${BACKEND_URL}/api/email/send`, {
