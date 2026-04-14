@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen } from 'lucide-react'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -25,6 +25,8 @@ const TABS = [
 const TEXTAREA_FIELDS = ['google_drive_credentials']
 // Fields that should be masked
 const SENSITIVE_FIELDS = ['google_drive_credentials', 'smtp_password']
+// Fields that allow file upload (read JSON file from filesystem)
+const FILE_PICKER_FIELDS = ['google_drive_credentials']
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
@@ -184,14 +186,60 @@ export function SettingsPage() {
                       <option value="true">AWS Bedrock</option>
                     </select>
                   ) : isTextarea ? (
-                    <textarea
-                      value={isVisible ? (formValues[setting.key] || '') : (formValues[setting.key] ? '••••••••' : '')}
-                      onChange={e => isVisible && setFormValues(v => ({ ...v, [setting.key]: e.target.value }))}
-                      readOnly={!isVisible}
-                      rows={4}
-                      placeholder={setting.key}
-                      className="mt-2 w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background resize-none font-mono"
-                    />
+                    <div>
+                      {FILE_PICKER_FIELDS.includes(setting.key) && (
+                        <div className="mt-2 mb-1 flex items-center gap-2">
+                          <label className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                            <FolderOpen className="w-4 h-4" />
+                            Browse JSON File
+                            <input type="file" accept=".json" className="hidden"
+                              onChange={e => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                const reader = new FileReader()
+                                reader.onload = () => {
+                                  const content = reader.result as string
+                                  try {
+                                    // Validate it's valid JSON with expected fields
+                                    const parsed = JSON.parse(content)
+                                    if (parsed.type !== 'service_account') {
+                                      alert('Invalid file: expected a Google service account JSON key (type: "service_account")')
+                                      return
+                                    }
+                                    setFormValues(v => ({ ...v, [setting.key]: content }))
+                                    setShowSensitive(s => ({ ...s, [setting.key]: true }))
+                                  } catch {
+                                    alert('Invalid JSON file')
+                                  }
+                                }
+                                reader.readAsText(file)
+                                e.target.value = '' // reset so same file can be selected again
+                              }}
+                            />
+                          </label>
+                          {formValues[setting.key] && (() => {
+                            try {
+                              const parsed = JSON.parse(formValues[setting.key])
+                              return (
+                                <span className="text-xs text-success">
+                                  {parsed.client_email || 'Valid JSON loaded'}
+                                </span>
+                              )
+                            } catch {
+                              return <span className="text-xs text-destructive">Invalid JSON</span>
+                            }
+                          })()}
+                        </div>
+                      )}
+                      <textarea
+                        value={isVisible ? (formValues[setting.key] || '') : (formValues[setting.key] ? '••••••••' : '')}
+                        onChange={e => isVisible && setFormValues(v => ({ ...v, [setting.key]: e.target.value }))}
+                        readOnly={!isVisible}
+                        rows={4}
+                        placeholder="Paste JSON here or use Browse button above"
+                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background resize-none font-mono"
+                      />
+                    </div>
                   ) : (
                     <input
                       type={isSensitive && !isVisible ? 'password' : 'text'}
