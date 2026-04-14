@@ -31,29 +31,49 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # ── Claude client ────────────────────────────────────────────────────────────
-# Auto-detects: ANTHROPIC_API_KEY for direct API, or AWS credentials for Bedrock
-USE_BEDROCK = os.getenv("USE_BEDROCK", "true").lower() == "true"
+
+
+def _get_ai_config() -> dict:
+    """Read AI config from Supabase settings, with env var fallbacks."""
+    try:
+        result = supabase.table("app_settings").select("key, value").in_("key", [
+            "use_bedrock", "anthropic_api_key", "scanner_model"
+        ]).execute()
+        config = {r["key"]: r["value"] for r in (result.data or [])}
+    except Exception:
+        config = {}
+
+    return {
+        "use_bedrock": (config.get("use_bedrock") or os.getenv("USE_BEDROCK", "true")).lower() == "true",
+        "api_key": config.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY", ""),
+        "model": config.get("scanner_model") or os.getenv("SCANNER_MODEL", "claude-sonnet-4-6-20250929"),
+    }
 
 
 def get_claude_client() -> anthropic.Anthropic:
-    if USE_BEDROCK:
+    config = _get_ai_config()
+    if config["use_bedrock"]:
         return anthropic.AnthropicBedrock(
             aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
-    return anthropic.Anthropic()
+    if config["api_key"]:
+        return anthropic.Anthropic(api_key=config["api_key"])
+    return anthropic.Anthropic()  # falls back to ANTHROPIC_API_KEY env var
 
 
 def get_model_id() -> str:
-    if USE_BEDROCK:
+    config = _get_ai_config()
+    if config["use_bedrock"]:
         return "us.anthropic.claude-sonnet-4-6"
-    return os.getenv("SCANNER_MODEL", "claude-sonnet-4-6-20250929")
+    return config["model"] or "claude-sonnet-4-6-20250929"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: verify connections."""
     print(f"[Backend] Supabase URL: {SUPABASE_URL}")
-    print(f"[Backend] Using {'Bedrock' if USE_BEDROCK else 'Anthropic API'}")
+    config = _get_ai_config()
+    print(f"[Backend] Using {'Bedrock' if config['use_bedrock'] else 'Anthropic API'}")
     yield
 
 
@@ -75,7 +95,8 @@ class ScanRequest(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "scanner": "bedrock" if USE_BEDROCK else "anthropic"}
+    config = _get_ai_config()
+    return {"status": "ok", "scanner": "bedrock" if config["use_bedrock"] else "anthropic"}
 
 
 @app.post("/api/scan")

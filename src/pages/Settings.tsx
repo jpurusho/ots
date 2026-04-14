@@ -25,7 +25,7 @@ const TABS = [
 // Fields that should use textarea (multiline)
 const TEXTAREA_FIELDS = ['google_drive_credentials']
 // Fields that should be masked
-const SENSITIVE_FIELDS = ['google_drive_credentials', 'smtp_password']
+const SENSITIVE_FIELDS = ['google_drive_credentials', 'smtp_password', 'anthropic_api_key']
 // Fields that allow file upload (read JSON file from filesystem)
 const FILE_PICKER_FIELDS = ['google_drive_credentials']
 // Fields that use Drive folder picker

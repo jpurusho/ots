@@ -96,6 +96,7 @@ INSERT INTO app_settings (key, value, category, data_type, label, description) V
   ('church_name', 'Christ Church of India, San Ramon', 'general', 'string', 'Organization Name', 'Displayed in report headers'),
   ('scanner_model', 'claude-sonnet-4-6-20250929', 'ai', 'string', 'Scanner Model', 'Claude model for image scanning'),
   ('use_bedrock', 'false', 'ai', 'boolean', 'Use AWS Bedrock', 'Use Bedrock instead of direct Anthropic API'),
+  ('anthropic_api_key', '', 'ai', 'string', 'Anthropic API Key', 'API key for direct Anthropic API scanning (production)'),
   ('items_per_page', '20', 'general', 'number', 'Items Per Page', 'Number of items shown in lists'),
   ('google_drive_credentials', '', 'drive', 'string', 'Service Account JSON', 'Google service account credentials (JSON key)'),
   ('drive_images_folder_id', '', 'drive', 'string', 'Images Folder ID', 'Google Drive folder for importing offering images'),
