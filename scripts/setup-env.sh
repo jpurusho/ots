@@ -13,11 +13,14 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 VITE_BOOTSTRAP_ADMIN=jerome.purushotham@gmail.com
 EOF
 
+  echo "Create backend/.env with your Supabase service role key:"
+  echo "  Get it from: https://supabase.com/dashboard/project/xtbzyficagznxatzxlzy/settings/api"
   cat > backend/.env << 'EOF'
 SUPABASE_URL=https://xtbzyficagznxatzxlzy.supabase.co
-SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0Ynp5ZmljYWd6bnhhdHp4bHp5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjEyNTEyNCwiZXhwIjoyMDkxNzAxMTI0fQ.6v0S37xySmDCHrkHyyRWeWv6f1C1LWRpwy_v7eBFwPQ
+SUPABASE_SERVICE_KEY=<paste-service-role-key-from-supabase-dashboard>
 USE_BEDROCK=false
 EOF
+  echo "  → Edit backend/.env and paste the service_role key"
 
   echo "Done. Run: npm run dev"
   echo "Backend: cd backend && source .venv/bin/activate && uvicorn main:app --port 8000 --reload"
