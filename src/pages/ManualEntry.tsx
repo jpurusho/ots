@@ -5,6 +5,34 @@ import { useAuth } from '@/lib/auth-context'
 import { Save, Loader2, CheckCircle, PenLine } from 'lucide-react'
 import { logActivity } from '@/lib/activity'
 
+/**
+ * Parse an expression like "10x2+100x5" or "10*2 + 100*5" or just "250"
+ * Supports: ×, x, X, * for multiplication; + for addition
+ */
+function parseExpression(expr: string): number {
+  if (!expr || !expr.trim()) return 0
+  const cleaned = expr.trim()
+
+  // If it's just a plain number
+  const plain = parseFloat(cleaned)
+  if (!isNaN(plain) && /^\d+\.?\d*$/.test(cleaned)) return plain
+
+  // Split by + and evaluate each term
+  const terms = cleaned.split(/\s*\+\s*/)
+  let total = 0
+  for (const term of terms) {
+    // Check for multiplication: "10x2", "100*5", "20×3"
+    const multMatch = term.trim().match(/^(\d+\.?\d*)\s*[×xX*]\s*(\d+\.?\d*)$/)
+    if (multMatch) {
+      total += parseFloat(multMatch[1]) * parseFloat(multMatch[2])
+    } else {
+      const val = parseFloat(term.trim())
+      if (!isNaN(val)) total += val
+    }
+  }
+  return total
+}
+
 export function ManualEntryPage() {
   const { appUser } = useAuth()
   const queryClient = useQueryClient()
@@ -26,11 +54,11 @@ export function ManualEntryPage() {
         .from('offerings')
         .insert({
           offering_date: form.offering_date,
-          general: parseFloat(form.general) || 0,
-          cash: parseFloat(form.cash) || 0,
-          sunday_school: parseFloat(form.sunday_school) || 0,
-          building_fund: parseFloat(form.building_fund) || 0,
-          misc: parseFloat(form.misc) || 0,
+          general: computedValues.general,
+          cash: computedValues.cash,
+          sunday_school: computedValues.sunday_school,
+          building_fund: computedValues.building_fund,
+          misc: computedValues.misc,
           notes: form.notes || null,
           source_type: 'manual',
           status: 'scanned',
@@ -52,8 +80,14 @@ export function ManualEntryPage() {
     },
   })
 
-  const total = [form.general, form.cash, form.sunday_school, form.building_fund, form.misc]
-    .reduce((sum, v) => sum + (parseFloat(v) || 0), 0)
+  const computedValues = {
+    general: parseExpression(form.general),
+    cash: parseExpression(form.cash),
+    sunday_school: parseExpression(form.sunday_school),
+    building_fund: parseExpression(form.building_fund),
+    misc: parseExpression(form.misc),
+  }
+  const total = Object.values(computedValues).reduce((sum, v) => sum + v, 0)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -88,18 +122,26 @@ export function ManualEntryPage() {
           </div>
 
           {/* Amount fields */}
-          {fields.map(({ key, label, placeholder }) => (
-            <div key={key}>
-              <label className="text-sm font-medium">{label}</label>
-              <div className="relative mt-1">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">$</span>
-                <input type="number" step="0.01" min="0" placeholder={placeholder}
-                  value={form[key as keyof typeof form]}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  className="w-full pl-7 pr-3 py-2 text-sm rounded-lg border border-border bg-background" />
+          {fields.map(({ key, label }) => {
+            const raw = form[key as keyof typeof form]
+            const computed = computedValues[key as keyof typeof computedValues]
+            const isExpr = raw.includes('x') || raw.includes('X') || raw.includes('×') || raw.includes('*') || raw.includes('+')
+            return (
+              <div key={key}>
+                <label className="text-sm font-medium">{label}</label>
+                <div className="relative mt-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">$</span>
+                  <input type="text" placeholder="0.00 or 10x2+100x5"
+                    value={raw}
+                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                    className="w-full pl-7 pr-3 py-2 text-sm rounded-lg border border-border bg-background" />
+                </div>
+                {isExpr && computed > 0 && (
+                  <p className="text-xs text-success mt-0.5 ml-1">= ${computed.toFixed(2)}</p>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {/* Total */}
           <div className="pt-3 border-t border-border flex items-center justify-between">
