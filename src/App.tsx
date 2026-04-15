@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
@@ -5,6 +6,7 @@ import { UploadProvider } from '@/lib/upload-manager'
 import { Layout } from '@/components/Layout'
 import { AdminGuard } from '@/components/AdminGuard'
 import { LoginPage } from '@/pages/Login'
+import { SetupPage } from '@/pages/Setup'
 import { DashboardPage } from '@/pages/Dashboard'
 import { OfferingsPage } from '@/pages/Offerings'
 import { ReviewPage } from '@/pages/Review'
@@ -15,6 +17,8 @@ import { UsersPage } from '@/pages/Users'
 import { ActivityPage } from '@/pages/Activity'
 import { ChecksPage } from '@/pages/Checks'
 import { Loader2, ShieldX } from 'lucide-react'
+import { isElectron, getElectronAPI } from '@/lib/electron-compat'
+import { initSupabase } from '@/lib/supabase'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,7 +84,62 @@ function AuthGate() {
   )
 }
 
+/**
+ * App wrapper that handles Electron config initialization.
+ * In Electron: loads config from IPC, initializes Supabase, then renders.
+ * In browser: Supabase auto-initializes from env vars (via Proxy).
+ */
 export default function App() {
+  const [configReady, setConfigReady] = useState(!isElectron) // Browser is ready immediately
+  const [needsSetup, setNeedsSetup] = useState(false)
+
+  useEffect(() => {
+    if (!isElectron) return // Browser mode — Supabase Proxy handles init
+
+    const api = getElectronAPI()
+    if (!api) return
+
+    api.config.hasConfig().then(async (has) => {
+      if (!has) {
+        setNeedsSetup(true)
+        return
+      }
+
+      // Load config and initialize Supabase
+      const config = await api.config.getActiveSupabase()
+      if (config) {
+        initSupabase(config.url, config.anonKey)
+      }
+      setConfigReady(true)
+    })
+  }, [])
+
+  const handleSetupComplete = async () => {
+    const api = getElectronAPI()
+    if (api) {
+      const config = await api.config.getActiveSupabase()
+      if (config) {
+        initSupabase(config.url, config.anonKey)
+      }
+    }
+    setNeedsSetup(false)
+    setConfigReady(true)
+  }
+
+  // Electron: show setup wizard if no config
+  if (needsSetup) {
+    return <SetupPage onComplete={handleSetupComplete} />
+  }
+
+  // Electron: show loading while config loads
+  if (!configReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

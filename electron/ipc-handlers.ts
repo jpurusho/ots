@@ -1,5 +1,6 @@
 import { app, ipcMain, shell } from 'electron'
 import { getBackendUrl } from './backend-manager'
+import { loadConfig, saveConfig, hasConfig, getActiveSupabase } from './config-manager'
 
 export function registerIpcHandlers(): void {
   // App info
@@ -28,4 +29,10 @@ export function registerIpcHandlers(): void {
       return { status: 'error' }
     }
   })
+
+  // Config
+  ipcMain.handle('config:get', () => loadConfig())
+  ipcMain.handle('config:save', (_event, partial: any) => saveConfig(partial))
+  ipcMain.handle('config:hasConfig', () => hasConfig())
+  ipcMain.handle('config:getActiveSupabase', () => getActiveSupabase())
 }

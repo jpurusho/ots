@@ -6,6 +6,22 @@
 
 export const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
 
+interface SupabaseConfig {
+  url: string
+  anonKey: string
+  serviceKey?: string
+}
+
+interface OTSConfig {
+  supabase: {
+    prod?: SupabaseConfig
+    test?: SupabaseConfig
+  }
+  activeEnv: 'prod' | 'test'
+  bootstrapAdmin?: string
+  theme?: 'light' | 'dark' | 'system'
+}
+
 interface ElectronAPI {
   app: {
     getVersion: () => Promise<string>
@@ -15,6 +31,12 @@ interface ElectronAPI {
   backend: {
     getUrl: () => Promise<string>
     getStatus: () => Promise<{ status: string; scanner?: string }>
+  }
+  config: {
+    get: () => Promise<OTSConfig>
+    save: (partial: Partial<OTSConfig>) => Promise<OTSConfig>
+    hasConfig: () => Promise<boolean>
+    getActiveSupabase: () => Promise<SupabaseConfig | null>
   }
 }
 

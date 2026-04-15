@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, nativeTheme, shell } from 'electron'
 import * as path from 'path'
 import { startBackend, stopBackend } from './backend-manager'
 import { registerIpcHandlers } from './ipc-handlers'
+import { loadConfig, getServiceKey, getActiveSupabase } from './config-manager'
 
 const isDev = !app.isPackaged
 
@@ -112,9 +113,18 @@ app.whenReady().then(async () => {
   registerIpcHandlers()
   createMenu()
 
-  // Start Python backend
+  // Start Python backend with Supabase config from config file
   try {
-    await startBackend()
+    const active = getActiveSupabase()
+    const serviceKey = getServiceKey()
+    const backendEnv: Record<string, string> = {}
+    if (active) {
+      backendEnv.SUPABASE_URL = active.url
+    }
+    if (serviceKey) {
+      backendEnv.SUPABASE_SERVICE_KEY = serviceKey
+    }
+    await startBackend(backendEnv)
   } catch (err) {
     console.error('[App] Backend failed to start:', err)
   }
