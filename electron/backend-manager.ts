@@ -86,7 +86,9 @@ export async function startBackend(env?: Record<string, string>): Promise<number
 
   if (isDev) {
     // Dev mode: run from source with Python
-    const backendDir = path.join(__dirname, '../../backend')
+    // __dirname is dist/electron/electron/ — go up to project root
+    const projectRoot = path.join(__dirname, '..', '..', '..')
+    const backendDir = path.join(projectRoot, 'backend')
     const venvPython = path.join(backendDir, '.venv', 'bin', 'python')
 
     backendProcess = spawn(venvPython, [
