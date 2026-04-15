@@ -19,6 +19,7 @@ import { ChecksPage } from '@/pages/Checks'
 import { Loader2, ShieldX } from 'lucide-react'
 import { isElectron, getElectronAPI } from '@/lib/electron-compat'
 import { initSupabase } from '@/lib/supabase'
+import { EnvProvider } from '@/lib/env-context'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -142,11 +143,13 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter basename={import.meta.env.BASE_URL}>
-          <AuthGate />
-        </BrowserRouter>
-      </AuthProvider>
+      <EnvProvider>
+        <AuthProvider>
+          <BrowserRouter basename={import.meta.env.BASE_URL}>
+            <AuthGate />
+          </BrowserRouter>
+        </AuthProvider>
+      </EnvProvider>
     </QueryClientProvider>
   )
 }

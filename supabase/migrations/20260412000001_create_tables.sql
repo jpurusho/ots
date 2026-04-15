@@ -2,7 +2,7 @@
 -- Migrated from SQLite (v1) to PostgreSQL (v2)
 
 -- Offerings: one row per scanned/entered offering
-CREATE TABLE offerings (
+CREATE TABLE IF NOT EXISTS offerings (
   id BIGSERIAL PRIMARY KEY,
   filename TEXT UNIQUE,
   file_hash TEXT,
@@ -31,7 +31,7 @@ CREATE TABLE offerings (
 );
 
 -- Offering checks: bank check details linked to offerings
-CREATE TABLE offering_checks (
+CREATE TABLE IF NOT EXISTS offering_checks (
   id BIGSERIAL PRIMARY KEY,
   offering_id BIGINT REFERENCES offerings(id) ON DELETE CASCADE,
   check_number TEXT,
@@ -48,7 +48,7 @@ CREATE TABLE offering_checks (
 );
 
 -- App users: application-level roles, linked to Supabase auth.users
-CREATE TABLE app_users (
+CREATE TABLE IF NOT EXISTS app_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
   email TEXT UNIQUE NOT NULL,
@@ -61,7 +61,7 @@ CREATE TABLE app_users (
 );
 
 -- App settings: key-value configuration store
-CREATE TABLE app_settings (
+CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT,
   category TEXT,
@@ -72,7 +72,7 @@ CREATE TABLE app_settings (
 );
 
 -- Activity log: audit trail of all user actions
-CREATE TABLE activity_log (
+CREATE TABLE IF NOT EXISTS activity_log (
   id BIGSERIAL PRIMARY KEY,
   user_email TEXT,
   action TEXT,
@@ -83,13 +83,13 @@ CREATE TABLE activity_log (
 );
 
 -- Indexes for common query patterns
-CREATE INDEX idx_offerings_status ON offerings(status);
-CREATE INDEX idx_offerings_date ON offerings(offering_date);
-CREATE INDEX idx_offerings_locked ON offerings(locked);
-CREATE INDEX idx_offering_checks_offering ON offering_checks(offering_id);
-CREATE INDEX idx_activity_created ON activity_log(created_at);
-CREATE INDEX idx_activity_action ON activity_log(action);
-CREATE INDEX idx_app_settings_category ON app_settings(category);
+CREATE INDEX IF NOT EXISTS idx_offerings_status ON offerings(status);
+CREATE INDEX IF NOT EXISTS idx_offerings_date ON offerings(offering_date);
+CREATE INDEX IF NOT EXISTS idx_offerings_locked ON offerings(locked);
+CREATE INDEX IF NOT EXISTS idx_offering_checks_offering ON offering_checks(offering_id);
+CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action);
+CREATE INDEX IF NOT EXISTS idx_app_settings_category ON app_settings(category);
 
 -- Seed essential settings
 INSERT INTO app_settings (key, value, category, data_type, label, description) VALUES

@@ -1,6 +1,8 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '@/lib/auth-context'
 import { useUploadManager } from '@/lib/upload-manager'
+import { useEnv } from '@/lib/env-context'
+import { isElectron } from '@/lib/electron-compat'
 import {
   LayoutDashboard, Upload, ClipboardCheck, FileText,
   Settings, Users, Activity, LogOut, PenLine, Receipt,
@@ -25,6 +27,7 @@ const adminItems = [
 export function Layout() {
   const { appUser, user, signOut } = useAuth()
   const { state: uploadState } = useUploadManager()
+  const { activeEnv, hasTestDb, switchEnvironment } = useEnv()
   const isAdmin = appUser?.role === 'admin'
 
   return (
@@ -32,8 +35,29 @@ export function Layout() {
       {/* Sidebar */}
       <aside className="w-56 border-r border-border bg-card flex flex-col">
         <div className="p-4 border-b border-border">
-          <h1 className="text-lg font-bold">OTS</h1>
-          <p className="text-xs text-muted">v2.0.0</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-bold">OTS</h1>
+              <p className="text-xs text-muted">v2.2.0</p>
+            </div>
+            {isElectron && hasTestDb && (
+              <div className="flex flex-col items-end gap-0.5">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                  activeEnv === 'prod'
+                    ? 'bg-destructive/10 text-destructive'
+                    : 'bg-warning/10 text-warning'
+                }`}>
+                  {activeEnv}
+                </span>
+                {isAdmin && (
+                  <button onClick={() => switchEnvironment(activeEnv === 'prod' ? 'test' : 'prod')}
+                    className="text-[9px] text-muted hover:text-foreground cursor-pointer">
+                    Switch to {activeEnv === 'prod' ? 'test' : 'prod'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <nav className="flex-1 p-3 space-y-1">
