@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, nativeTheme, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import * as path from 'path'
 import { startBackend, stopBackend } from './backend-manager'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -107,6 +108,41 @@ function createMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+function setupAutoUpdater(): void {
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'jpurusho',
+    repo: 'ots',
+  })
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('update-available', (info) => {
+    console.log(`[Update] New version available: ${info.version}`)
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('app:updateAvailable', info.version)
+    }
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log(`[Update] Downloaded: ${info.version}`)
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('app:updateReady', info.version)
+    }
+  })
+
+  autoUpdater.on('error', (err) => {
+    console.error('[Update] Error:', err?.message)
+  })
+
+  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+    console.error('[Update] Check failed:', err?.message)
+  })
+}
+
 app.setName('OTS')
 
 app.whenReady().then(async () => {
@@ -130,6 +166,11 @@ app.whenReady().then(async () => {
   }
 
   createWindow()
+
+  // Auto-update check (production only)
+  if (!isDev) {
+    setupAutoUpdater()
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
