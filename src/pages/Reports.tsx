@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
@@ -7,7 +7,7 @@ import {
   ExternalLink, Share2, ChevronDown, ChevronUp, ArrowUpDown, Search,
   CalendarRange, CloudUpload, Mail,
 } from 'lucide-react'
-import { openReport } from '@/lib/print-utils'
+import { generateAndDownloadPdf } from '@/lib/pdf-utils'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -63,22 +63,6 @@ const rowTotal = (o: ApprovedOffering) =>
   (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
 
 // Open HTML in new window (no auto-print — user can Cmd+P when ready)
-// openReport imported from shared utility
-
-function buildOfferingCard(churchName: string, o: ApprovedOffering): string {
-  const t = rowTotal(o)
-  return '<div class="card">' +
-    '<div class="card-header"><h3>' + churchName + '</h3><p>Week of ' + formatDate(o.offering_date) + '</p></div>' +
-    '<div class="card-body">' +
-    (o.general > 0 ? '<div class="card-row"><span>General (Checks)</span><span>$' + o.general.toFixed(2) + '</span></div>' : '') +
-    (o.cash > 0 ? '<div class="card-row"><span>Cash (Denominations)</span><span>$' + o.cash.toFixed(2) + '</span></div>' : '') +
-    (o.sunday_school > 0 ? '<div class="card-row"><span>Sunday School</span><span>$' + o.sunday_school.toFixed(2) + '</span></div>' : '') +
-    (o.building_fund > 0 ? '<div class="card-row"><span>Building Fund</span><span>$' + o.building_fund.toFixed(2) + '</span></div>' : '') +
-    (o.misc > 0 ? '<div class="card-row"><span>Miscellaneous</span><span>$' + o.misc.toFixed(2) + '</span></div>' : '') +
-    '<div class="card-total"><span>Total</span><span>$' + t.toFixed(2) + '</span></div>' +
-    '</div></div>'
-}
-
 // Email-safe card using tables instead of flexbox (Gmail/Outlook compatible)
 function buildEmailCard(churchName: string, o: ApprovedOffering): string {
   const t = rowTotal(o)
@@ -249,6 +233,8 @@ export function ReportsPage() {
   const [filterText, setFilterText] = useState('')
 
   const [emailSending, setEmailSending] = useState(false)
+  const [emailTarget, setEmailTarget] = useState<{ type: string; offering?: ApprovedOffering } | null>(null)
+  const [emailRecipients, setEmailRecipients] = useState('')
   const [showMissing, setShowMissing] = useState(true)
   const [displayMode, setDisplayMode] = useState<'table' | 'cards'>('table')
 
@@ -387,12 +373,65 @@ export function ReportsPage() {
   const title = churchName || 'Offering Report'
 
   // Export functions
-  const printReport = () => {
-    openReport(title, periodLabel, buildReportTable(offerings, grandTotal, grandTotalSum))
+  const printReport = async () => {
+    const today = new Date().toISOString().split('T')[0]
+    try {
+      await generateAndDownloadPdf({
+        title,
+        subtitle: periodLabel,
+        headers: ['Date', 'General', 'Cash', 'Sunday School', 'Building Fund', 'Misc', 'Total'],
+        rows: offerings.map(o => [formatDate(o.offering_date), fmt(o.general), fmt(o.cash), fmt(o.sunday_school), fmt(o.building_fund), fmt(o.misc), '$' + rowTotal(o).toFixed(2)]),
+        footer_row: ['Total', '$' + grandTotal.general.toFixed(2), '$' + grandTotal.cash.toFixed(2), '$' + grandTotal.sunday_school.toFixed(2), '$' + grandTotal.building_fund.toFixed(2), '$' + grandTotal.misc.toFixed(2), '$' + grandTotalSum.toFixed(2)],
+        filename: 'ots_report_' + periodLabel.replace(/\s+/g, '_').toLowerCase() + '_' + today + '.pdf',
+      })
+    } catch (err) { alert(err instanceof Error ? err.message : 'PDF failed') }
   }
 
-  const printWeekCard = (o: ApprovedOffering) => {
-    openReport(title, `Week of ${formatDate(o.offering_date)}`, buildOfferingCard(title, o))
+  // Initialize email recipients from defaults when target changes
+  useEffect(() => {
+    if (emailTarget && defaultRecipients && !emailRecipients) {
+      setEmailRecipients(defaultRecipients)
+    }
+  }, [emailTarget, defaultRecipients])
+
+  const sendEmail = async (subject: string, htmlBody: string) => {
+    if (!emailRecipients.trim()) return
+    setEmailSending(true)
+    try {
+      const resp = await fetch(BACKEND_URL + '/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailRecipients.split(',').map((e: string) => e.trim()).filter(Boolean),
+          subject,
+          html_body: htmlBody,
+        }),
+      })
+      const data = await resp.json()
+      if (data.success) { setEmailTarget(null); setEmailRecipients('') }
+      else alert(data.detail || data.error || 'Send failed')
+    } catch (err) { alert(err instanceof Error ? err.message : 'Failed') }
+    finally { setEmailSending(false) }
+  }
+
+  const buildEmailReportHtml = () => {
+    const thStyle = 'padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1'
+    const tdStyle = 'padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb'
+    const ftStyle = 'padding:10px 12px;text-align:right;font-weight:bold'
+    const rows = offerings.map((o, i) => {
+      const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc'
+      return '<tr style="background:' + bg + '"><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">' + formatDate(o.offering_date) + '</td>' +
+        '<td style="' + tdStyle + '">' + fmt(o.general) + '</td><td style="' + tdStyle + '">' + fmt(o.cash) + '</td>' +
+        '<td style="' + tdStyle + '">' + fmt(o.sunday_school) + '</td><td style="' + tdStyle + '">' + fmt(o.building_fund) + '</td>' +
+        '<td style="' + tdStyle + '">' + fmt(o.misc) + '</td><td style="' + tdStyle + ';font-weight:bold">$' + rowTotal(o).toFixed(2) + '</td></tr>'
+    }).join('')
+    return '<div style="font-family:system-ui,sans-serif;max-width:700px;margin:0 auto;color:#1a1a2e">' +
+      '<div style="background:#4f46e5;color:white;padding:20px 24px;border-radius:8px 8px 0 0"><h1 style="margin:0;font-size:18px">' + title + '</h1><p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + '</p></div>' +
+      '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#f1f5f9">' +
+      '<th style="' + thStyle + ';text-align:left">Date</th><th style="' + thStyle + '">General</th><th style="' + thStyle + '">Cash</th><th style="' + thStyle + '">Sunday School</th><th style="' + thStyle + '">Building Fund</th><th style="' + thStyle + '">Misc</th><th style="' + thStyle + '">Total</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody><tfoot><tr style="background:#4f46e5;color:white">' +
+      '<td style="' + ftStyle + ';text-align:left">Total</td><td style="' + ftStyle + '">$' + grandTotal.general.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.cash.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.sunday_school.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.building_fund.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.misc.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotalSum.toFixed(2) + '</td>' +
+      '</tr></tfoot></table></div><p style="margin-top:16px;font-size:10px;color:#94a3b8;text-align:center">Generated by OTS</p></div>'
   }
 
   const exportCsv = () => {
@@ -604,82 +643,45 @@ export function ReportsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
                 <CloudUpload className="w-3.5 h-3.5" /> Drive
               </button>
-              <button disabled={emailSending} onClick={async () => {
-                  const recipients = prompt('Send report to (comma-separated emails):', defaultRecipients || '')
-                  if (!recipients) return
-                  setEmailSending(true)
-
-                  // Build rows first, then assemble
-                  const thStyle = 'padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1'
-                  const tdStyle = 'padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb'
-                  const tdBold = tdStyle + ';font-weight:bold'
-                  const ftStyle = 'padding:10px 12px;text-align:right;font-weight:bold'
-
-                  const tableRows = offerings.map((o, i) => {
-                    const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc'
-                    return '<tr style="background:' + bg + '">' +
-                      '<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">' + formatDate(o.offering_date) + '</td>' +
-                      '<td style="' + tdStyle + '">' + fmt(o.general) + '</td>' +
-                      '<td style="' + tdStyle + '">' + fmt(o.cash) + '</td>' +
-                      '<td style="' + tdStyle + '">' + fmt(o.sunday_school) + '</td>' +
-                      '<td style="' + tdStyle + '">' + fmt(o.building_fund) + '</td>' +
-                      '<td style="' + tdStyle + '">' + fmt(o.misc) + '</td>' +
-                      '<td style="' + tdBold + '">$' + rowTotal(o).toFixed(2) + '</td>' +
-                      '</tr>'
-                  }).join('')
-
-                  const emailHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;max-width:700px;margin:0 auto;color:#1a1a2e">' +
-                    '<div style="background:#4f46e5;color:white;padding:20px 24px;border-radius:8px 8px 0 0">' +
-                      '<h1 style="margin:0;font-size:18px;font-weight:600">' + title + '</h1>' +
-                      '<p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + ' &mdash; Offering Report</p>' +
-                    '</div>' +
-                    '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">' +
-                      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
-                        '<thead><tr style="background:#f1f5f9">' +
-                          '<th style="' + thStyle + ';text-align:left">Date</th>' +
-                          '<th style="' + thStyle + '">General</th>' +
-                          '<th style="' + thStyle + '">Cash</th>' +
-                          '<th style="' + thStyle + '">Sunday School</th>' +
-                          '<th style="' + thStyle + '">Building Fund</th>' +
-                          '<th style="' + thStyle + '">Misc</th>' +
-                          '<th style="' + thStyle + '">Total</th>' +
-                        '</tr></thead>' +
-                        '<tbody>' + tableRows + '</tbody>' +
-                        '<tfoot><tr style="background:#4f46e5;color:white">' +
-                          '<td style="' + ftStyle + ';text-align:left">Total</td>' +
-                          '<td style="' + ftStyle + '">$' + grandTotal.general.toFixed(2) + '</td>' +
-                          '<td style="' + ftStyle + '">$' + grandTotal.cash.toFixed(2) + '</td>' +
-                          '<td style="' + ftStyle + '">$' + grandTotal.sunday_school.toFixed(2) + '</td>' +
-                          '<td style="' + ftStyle + '">$' + grandTotal.building_fund.toFixed(2) + '</td>' +
-                          '<td style="' + ftStyle + '">$' + grandTotal.misc.toFixed(2) + '</td>' +
-                          '<td style="' + ftStyle + '">$' + grandTotalSum.toFixed(2) + '</td>' +
-                        '</tr></tfoot>' +
-                      '</table>' +
-                    '</div>' +
-                    '<p style="margin-top:16px;font-size:10px;color:#94a3b8;text-align:center">Generated by OTS on ' + new Date().toLocaleDateString() + '</p>' +
-                  '</div>'
-
-                  try {
-                    const resp = await fetch(`${BACKEND_URL}/api/email/send`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        to: recipients.split(',').map((e: string) => e.trim()).filter(Boolean),
-                        subject: `${title} — ${periodLabel}`,
-                        html_body: emailHtml,
-                      }),
-                    })
-                    const data = await resp.json()
-                    if (data.success) alert(data.message)
-                    else alert(data.detail || data.error || 'Send failed')
-                  } catch (err) { alert(err instanceof Error ? err.message : 'Failed') }
-                  finally { setEmailSending(false) }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer disabled:opacity-50">
-                {emailSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />} Email
+              <button onClick={() => setEmailTarget(emailTarget?.type === 'report' ? null : { type: 'report' })}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer ${
+                  emailTarget?.type === 'report' ? 'bg-primary text-primary-foreground' : 'border border-border hover:bg-muted-foreground/10'
+                }`}>
+                <Mail className="w-3.5 h-3.5" /> Email
               </button>
             </div>
           </div>
+
+          {/* Inline email panel */}
+          {emailTarget && (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+              <div className="flex items-center gap-3">
+                <Mail className="w-4 h-4 text-primary flex-shrink-0" />
+                <input type="text" placeholder="Recipients (comma-separated emails)"
+                  value={emailRecipients}
+                  onChange={e => setEmailRecipients(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+                <button disabled={emailSending || !emailRecipients.trim()}
+                  onClick={() => {
+                    const o = emailTarget.offering
+                    if (emailTarget.type === 'report') {
+                      sendEmail(title + ' — ' + periodLabel, buildEmailReportHtml())
+                    } else if (o) {
+                      sendEmail(title + ' — Week of ' + formatDate(o.offering_date), buildEmailCard(title, o))
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+                  {emailSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                  Send
+                </button>
+                <button onClick={() => { setEmailTarget(null); setEmailRecipients('') }}
+                  className="text-xs text-muted hover:text-foreground cursor-pointer">Cancel</button>
+              </div>
+              <p className="text-[10px] text-muted mt-1.5 ml-8">
+                {emailTarget.type === 'report' ? 'Sending full report table' : 'Sending weekly offering card for ' + formatDate(emailTarget.offering?.offering_date || '')}
+              </p>
+            </div>
+          )}
 
           {/* Cards view (inline) */}
           {displayMode === 'cards' && (
@@ -749,19 +751,7 @@ export function ReportsPage() {
                           className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
                           <ExternalLink className="w-3 h-3" /> Review
                         </button>
-                        <button onClick={async () => {
-                          const recipients = prompt('Email card to:', defaultRecipients || '')
-                          if (!recipients) return
-                          const cardHtml = buildEmailCard(title, o)
-                          try {
-                            await fetch(BACKEND_URL + '/api/email/send', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ to: recipients.split(',').map((s: string) => s.trim()).filter(Boolean), subject: title + ' — Week of ' + formatDate(o.offering_date), html_body: cardHtml }),
-                            })
-                            alert('Email sent!')
-                          } catch { alert('Send failed') }
-                        }}
+                        <button onClick={() => setEmailTarget(emailTarget?.offering?.id === o.id ? null : { type: 'card', offering: o })}
                           className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
                           <Mail className="w-3 h-3" /> Email
                         </button>
@@ -871,29 +861,7 @@ export function ReportsPage() {
                                     className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
                                     <ExternalLink className="w-3 h-3" /> View
                                   </button>
-                                  <button onClick={e => { e.stopPropagation(); printWeekCard(o) }}
-                                    className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
-                                    <Share2 className="w-3 h-3" /> Print Card
-                                  </button>
-                                  <button onClick={async e => {
-                                    e.stopPropagation()
-                                    const recipients = prompt('Email card to:', defaultRecipients || '')
-                                    if (!recipients) return
-                                    const cardHtml = buildEmailCard(title, o)
-                                    try {
-                                      const resp = await fetch(BACKEND_URL + '/api/email/send', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                          to: recipients.split(',').map((s: string) => s.trim()).filter(Boolean),
-                                          subject: title + ' — Week of ' + formatDate(o.offering_date),
-                                          html_body: cardHtml,
-                                        }),
-                                      })
-                                      const data = await resp.json()
-                                      alert(data.success ? data.message : (data.detail || 'Send failed'))
-                                    } catch (err) { alert(err instanceof Error ? err.message : 'Failed') }
-                                  }}
+                                  <button onClick={e => { e.stopPropagation(); setEmailTarget(emailTarget?.offering?.id === o.id ? null : { type: 'card', offering: o }) }}
                                     className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
                                     <Mail className="w-3 h-3" /> Email Card
                                   </button>
