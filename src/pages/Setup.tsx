@@ -25,11 +25,27 @@ export function SetupPage({ onComplete }: StepProps) {
     setTestResult(null)
     try {
       const client = createClient(url, key)
-      const { data, error } = await client.from('app_settings').select('key').limit(1)
-      if (error) throw error
-      setTestResult({ success: true, message: `Connected! ${data?.length ?? 0} settings found.` })
+      // Try app_settings first (existing DB), fall back to auth health check (empty DB)
+      const { error } = await client.from('app_settings').select('key').limit(1)
+      if (error && error.code === 'PGRST204') {
+        // Table doesn't exist — but connection works (empty project)
+        setTestResult({ success: true, message: 'Connected! Empty project — schema will be created on first use.' })
+      } else if (error && (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.code === 'PGRST205' || error.code === '42P01')) {
+        // Table not found variants — connection is fine
+        setTestResult({ success: true, message: 'Connected! Tables not yet created — schema will be applied automatically.' })
+      } else if (error) {
+        throw error
+      } else {
+        setTestResult({ success: true, message: 'Connected! Schema exists.' })
+      }
     } catch (err) {
-      setTestResult({ success: false, message: err instanceof Error ? err.message : 'Connection failed' })
+      const msg = err instanceof Error ? err.message : 'Connection failed'
+      // Check if it's a "relation does not exist" error — means connection works but no tables
+      if (msg.includes('does not exist') || msg.includes('relation')) {
+        setTestResult({ success: true, message: 'Connected! Empty project — schema will be created on first use.' })
+      } else {
+        setTestResult({ success: false, message: msg })
+      }
     } finally {
       setTesting(false)
     }
