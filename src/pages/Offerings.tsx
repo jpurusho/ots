@@ -225,9 +225,10 @@ export function OfferingsPage() {
 
 function DriveImportSection() {
   const [importing, setImporting] = useState(false)
+  const [phase, setPhase] = useState('')
   const [result, setResult] = useState<{
     imported: number; skipped: number; errors: number; total: number;
-    results: Array<{ name: string; status: string; reason?: string }>
+    results: Array<{ name: string; status: string; reason?: string; scan?: { success?: boolean; total?: number } }>
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -235,12 +236,14 @@ function DriveImportSection() {
     setImporting(true)
     setResult(null)
     setError(null)
+    setPhase('Connecting to Google Drive...')
     try {
       const resp = await fetch(`${BACKEND_URL}/api/drive/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auto_scan: true }),
       })
+      setPhase('Processing results...')
       const data = await resp.json()
       if (data.detail) throw new Error(data.detail)
       setResult(data)
@@ -248,6 +251,7 @@ function DriveImportSection() {
       setError(err instanceof Error ? err.message : 'Import failed')
     } finally {
       setImporting(false)
+      setPhase('')
     }
   }
 
@@ -267,6 +271,17 @@ function DriveImportSection() {
           {importing ? 'Importing...' : 'Import'}
         </button>
       </div>
+
+      {/* Progress */}
+      {importing && phase && (
+        <div className="px-4 py-2 border-t border-border">
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+            <span className="text-xs text-muted">{phase}</span>
+          </div>
+          <p className="text-[10px] text-muted mt-1">Downloading, converting HEIC → JPEG, uploading, and scanning with AI. This may take a few minutes...</p>
+        </div>
+      )}
 
       {error && (
         <div className="px-4 py-2 border-t border-border bg-destructive/5 text-destructive text-xs">
@@ -288,8 +303,15 @@ function DriveImportSection() {
                 <div key={i} className={`text-[10px] flex items-center gap-1 ${
                   r.status === 'imported' ? 'text-success' : r.status === 'error' ? 'text-destructive' : 'text-muted'
                 }`}>
-                  {r.status === 'imported' ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                  {r.name} {r.reason && `— ${r.reason}`}
+                  {r.status === 'imported' ? <CheckCircle className="w-3 h-3 flex-shrink-0" /> : <XCircle className="w-3 h-3 flex-shrink-0" />}
+                  <span className="truncate">{r.name}</span>
+                  {r.status === 'imported' && r.scan?.success && (
+                    <span className="text-success ml-auto flex-shrink-0">${(r.scan.total || 0).toFixed(0)}</span>
+                  )}
+                  {r.status === 'imported' && r.scan && !r.scan.success && (
+                    <span className="text-warning ml-auto flex-shrink-0">scan pending</span>
+                  )}
+                  {r.reason && <span className="ml-auto flex-shrink-0">{r.reason}</span>}
                 </div>
               ))}
             </div>

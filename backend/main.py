@@ -127,10 +127,23 @@ async def scan_offering(req: ScanRequest):
     except Exception as e:
         raise HTTPException(500, f"Failed to download image: {e}")
 
-    # Determine media type from extension
+    # Convert HEIC/HEIF to JPEG (Claude API can't process HEIC directly)
     ext = image_path.rsplit(".", 1)[-1].lower() if "." in image_path else "jpg"
-    media_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-                 "heic": "image/jpeg", "heif": "image/jpeg"}
+    if ext in ("heic", "heif"):
+        try:
+            import pillow_heif
+            from PIL import Image
+            import io as _io
+            pillow_heif.register_heif_opener()
+            img = Image.open(_io.BytesIO(image_bytes))
+            buf = _io.BytesIO()
+            img.save(buf, format="JPEG", quality=95)
+            image_bytes = buf.getvalue()
+            ext = "jpg"
+        except Exception as e:
+            print(f"[Scan] HEIC conversion failed: {e}, trying raw")
+
+    media_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}
     media_type = media_map.get(ext, "image/jpeg")
 
     # 3. Scan with Claude
@@ -368,6 +381,8 @@ async def import_from_drive(req: DriveImportRequest):
     # Get existing filenames and hashes to detect duplicates
     existing = supabase.table("offerings").select("filename, file_hash").execute()
     existing_names = {r["filename"] for r in (existing.data or [])}
+    # Also track base names (without extension) for HEIC/JPEG duplicate detection
+    existing_bases = {r["filename"].rsplit(".", 1)[0].upper() for r in (existing.data or []) if r.get("filename")}
     existing_hashes = {r["file_hash"] for r in (existing.data or []) if r.get("file_hash")}
 
     imported = 0
@@ -382,6 +397,13 @@ async def import_from_drive(req: DriveImportRequest):
             results.append({"name": df["name"], "status": "skipped", "reason": "Already uploaded"})
             continue
 
+        # Skip HEIC/JPEG variants (e.g., IMG_1234.heic when IMG_1234.jpeg exists)
+        base_name = df["name"].rsplit(".", 1)[0].upper()
+        if base_name in existing_bases:
+            skipped += 1
+            results.append({"name": df["name"], "status": "skipped", "reason": "Variant already exists"})
+            continue
+
         try:
             # Download from Drive
             content = download_drive_file(service, df["id"])
@@ -393,16 +415,36 @@ async def import_from_drive(req: DriveImportRequest):
                 results.append({"name": df["name"], "status": "skipped", "reason": "Duplicate content"})
                 continue
 
-            # Upload to Supabase Storage
+            # Convert HEIC to JPEG
             import time
+            ext = df["name"].rsplit(".", 1)[-1].lower() if "." in df["name"] else "jpg"
+            filename = df["name"]
+            if ext in ("heic", "heif"):
+                try:
+                    import pillow_heif
+                    from PIL import Image
+                    import io as _io
+                    pillow_heif.register_heif_opener()
+                    img = Image.open(_io.BytesIO(content))
+                    buf = _io.BytesIO()
+                    img.save(buf, format="JPEG", quality=95)
+                    content = buf.getvalue()
+                    file_hash = compute_file_hash(content)
+                    # Change filename to .jpg
+                    filename = df["name"].rsplit(".", 1)[0] + ".jpg"
+                    ext = "jpg"
+                except Exception as e:
+                    errors += 1
+                    results.append({"name": df["name"], "status": "error", "reason": f"HEIC conversion failed: {e}"})
+                    continue
+
+            # Upload to Supabase Storage
             timestamp = int(time.time() * 1000)
             year = time.strftime("%Y")
-            safe_name = df["name"].replace(" ", "_")
+            safe_name = filename.replace(" ", "_")
             storage_path = f"{year}/{timestamp}_{safe_name}"
 
-            ext = df["name"].rsplit(".", 1)[-1].lower() if "." in df["name"] else "jpg"
-            mime_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-                       "heic": "image/jpeg", "heif": "image/jpeg", "pdf": "application/pdf"}
+            mime_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "pdf": "application/pdf"}
             content_type = mime_map.get(ext, "image/jpeg")
 
             supabase.storage.from_("offering-images").upload(
@@ -410,9 +452,9 @@ async def import_from_drive(req: DriveImportRequest):
                 file_options={"content-type": content_type}
             )
 
-            # Create offering record
+            # Create offering record (use converted filename if HEIC was converted)
             result = supabase.table("offerings").insert({
-                "filename": df["name"],
+                "filename": filename,
                 "file_hash": file_hash,
                 "image_path": storage_path,
                 "status": "uploaded",
