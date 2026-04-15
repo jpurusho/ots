@@ -837,11 +837,7 @@ export function ReviewPage() {
                 </span>
               )}
               <button
-                onClick={() => {
-                  if (confirm(`Permanently delete ${selected.filename || `offering #${selected.id}`}? This removes the image and any linked check records.`)) {
-                    deleteMutation.mutate(selected.id)
-                  }
-                }}
+                onClick={() => deleteMutation.mutate(selected.id)}
                 disabled={deleteMutation.isPending}
                 className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-destructive text-sm hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50"
                 title="Delete permanently"

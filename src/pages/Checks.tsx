@@ -298,7 +298,7 @@ export function ChecksPage() {
                   <td className="px-4 py-2">
                     <button onClick={(e) => {
                       e.stopPropagation()
-                      if (confirm(`Delete check #${c.check_number || c.id} from ${c.payer_name}?`))
+                      
                         deleteCheckMutation.mutate(c)
                     }}
                       className="p-1 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
@@ -453,7 +453,7 @@ export function ChecksPage() {
                       <td className="px-4 py-2">
                         <button onClick={(e) => {
                           e.stopPropagation()
-                          if (confirm(`Delete check #${c.check_number || c.id} from ${c.payer_name}?`))
+                          
                             deleteCheckMutation.mutate(c)
                         }}
                           className="p-1 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">

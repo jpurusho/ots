@@ -174,11 +174,7 @@ export function ActivityPage() {
         <div className="flex items-center gap-2">
           {selectedIds.size > 0 && (
             <button
-              onClick={() => {
-                if (confirm(`Delete ${selectedIds.size} selected activity entries?`)) {
-                  purgeMutation.mutate({ ids: [...selectedIds] })
-                }
-              }}
+              onClick={() => purgeMutation.mutate({ ids: [...selectedIds] })}
               disabled={purgeMutation.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive text-white text-xs font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-50">
               <Trash2 className="w-3.5 h-3.5" /> Delete {selectedIds.size} Selected
@@ -207,14 +203,7 @@ export function ActivityPage() {
                 className="block mt-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
             </div>
             <button
-              onClick={() => {
-                const msg = purgeFrom || purgeTo
-                  ? `Delete activity logs${purgeFrom ? ` from ${purgeFrom}` : ''}${purgeTo ? ` to ${purgeTo}` : ''}?`
-                  : 'Delete ALL activity logs?'
-                if (confirm(msg)) {
-                  purgeMutation.mutate({ from: purgeFrom || undefined, to: purgeTo || undefined })
-                }
-              }}
+              onClick={() => purgeMutation.mutate({ from: purgeFrom || undefined, to: purgeTo || undefined })}
               disabled={purgeMutation.isPending}
               className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-50">
               {purgeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}

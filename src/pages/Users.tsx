@@ -159,7 +159,7 @@ export function UsersPage() {
                     }`}>
                     {user.is_active ? 'Deactivate' : 'Activate'}
                   </button>
-                  <button onClick={() => { if (confirm(`Delete ${user.name || user.email}?`)) deleteUserMutation.mutate(user.id) }}
+                  <button onClick={() => { deleteUserMutation.mutate(user.id) }}
                     className="p-1.5 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
                     <Trash2 className="w-4 h-4" />
                   </button>
