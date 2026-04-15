@@ -1,7 +1,7 @@
+import { getBackendUrl } from '@/lib/backend'
 import { useState } from 'react'
 import { Folder, ChevronRight, ArrowLeft, Loader2, Check, HardDrive } from 'lucide-react'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 interface DriveFolder {
   id: string
@@ -27,7 +27,7 @@ export function DriveFolderPicker({ onSelect, onCancel }: DriveFolderPickerProps
     setLoading(true)
     setError(null)
     try {
-      const resp = await fetch(`${BACKEND_URL}/api/drive/folders?parent=${encodeURIComponent(parentId)}`)
+      const resp = await fetch(`${await getBackendUrl()}/api/drive/folders?parent=${encodeURIComponent(parentId)}`)
       const data = await resp.json()
       if (data.detail) throw new Error(data.detail)
       setFolders(data.folders || [])

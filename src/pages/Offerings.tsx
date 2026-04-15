@@ -1,3 +1,4 @@
+import { getBackendUrl } from '@/lib/backend'
 import { useState, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useUploadManager } from '@/lib/upload-manager'
@@ -7,7 +8,6 @@ import {
   ArrowRight, ImagePlus, Sparkles, CloudDownload, Loader2,
 } from 'lucide-react'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 export function OfferingsPage() {
   const { appUser } = useAuth()
@@ -238,7 +238,7 @@ function DriveImportSection() {
     setError(null)
     setPhase('Connecting to Google Drive...')
     try {
-      const resp = await fetch(`${BACKEND_URL}/api/drive/import`, {
+      const resp = await fetch(`${await getBackendUrl()}/api/drive/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auto_scan: true }),

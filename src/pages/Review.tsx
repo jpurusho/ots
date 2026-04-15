@@ -1,3 +1,4 @@
+import { getBackendUrl } from '@/lib/backend'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -9,7 +10,6 @@ import {
   Eye, Pencil, Save, RotateCcw, Trash2, FileText, RefreshCw, Search, PenLine,
 } from 'lucide-react'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 type Offering = {
   id: number
@@ -418,7 +418,7 @@ export function ReviewPage() {
   // Rescan mutation
   const rescanMutation = useMutation({
     mutationFn: async (id: number) => {
-      const resp = await fetch(`${BACKEND_URL}/api/scan`, {
+      const resp = await fetch(`${await getBackendUrl()}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ offering_id: id }),

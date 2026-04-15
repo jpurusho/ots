@@ -26,6 +26,8 @@ mac:
       arch: [universal]
   darkModeSupport: true
   identity: null
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
 
 publish:
   provider: github

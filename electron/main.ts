@@ -1,5 +1,7 @@
 import { app, BrowserWindow, Menu, nativeTheme, shell } from 'electron'
 import * as path from 'path'
+import { startBackend, stopBackend } from './backend-manager'
+import { registerIpcHandlers } from './ipc-handlers'
 
 const isDev = !app.isPackaged
 
@@ -106,8 +108,17 @@ function createMenu(): void {
 
 app.setName('OTS')
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  registerIpcHandlers()
   createMenu()
+
+  // Start Python backend
+  try {
+    await startBackend()
+  } catch (err) {
+    console.error('[App] Backend failed to start:', err)
+  }
+
   createWindow()
 
   app.on('activate', () => {
@@ -115,6 +126,10 @@ app.whenReady().then(() => {
       createWindow()
     }
   })
+})
+
+app.on('before-quit', () => {
+  stopBackend()
 })
 
 app.on('window-all-closed', () => {

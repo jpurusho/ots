@@ -1,10 +1,10 @@
+import { getBackendUrl } from '@/lib/backend'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X } from 'lucide-react'
 import { DriveFolderPicker } from '@/components/DriveFolderPicker'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 interface Setting {
   key: string
@@ -112,7 +112,7 @@ export function SettingsPage() {
 
         // Test images folder
         if (imagesFolderId) {
-          const resp = await fetch(`${BACKEND_URL}/api/drive/test`, {
+          const resp = await fetch(`${await getBackendUrl()}/api/drive/test`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ folder_id: imagesFolderId }),
@@ -128,7 +128,7 @@ export function SettingsPage() {
 
         // Test reports folder
         if (reportsFolderId) {
-          const resp = await fetch(`${BACKEND_URL}/api/drive/test`, {
+          const resp = await fetch(`${await getBackendUrl()}/api/drive/test`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ folder_id: reportsFolderId }),
@@ -149,7 +149,7 @@ export function SettingsPage() {
         })
       } else if (type === 'email') {
         if (hasChanges) await handleSave()
-        const resp = await fetch(`${BACKEND_URL}/api/email/test`, {
+        const resp = await fetch(`${await getBackendUrl()}/api/email/test`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ to: formValues['smtp_user'] }),

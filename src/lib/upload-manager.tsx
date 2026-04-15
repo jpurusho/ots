@@ -1,8 +1,8 @@
+import { getBackendUrl } from '@/lib/backend'
 import { createContext, useContext, useState, useRef, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 export interface UploadResult {
   filename: string
@@ -134,7 +134,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         let scanned = false
         let scanTotal = 0
         try {
-          const scanResp = await fetch(`${BACKEND_URL}/api/scan`, {
+          const scanResp = await fetch(`${await getBackendUrl()}/api/scan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ offering_id: offering.id }),
