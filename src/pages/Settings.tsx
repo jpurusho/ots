@@ -2,8 +2,9 @@ import { getBackendUrl } from '@/lib/backend'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Sun, Moon, Monitor } from 'lucide-react'
 import { DriveFolderPicker } from '@/components/DriveFolderPicker'
+import { useTheme } from '@/lib/theme-context'
 
 
 interface Setting {
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'drive', label: 'Google Drive' },
   { id: 'email', label: 'Email' },
+  { id: 'themes', label: 'Themes' },
   { id: 'about', label: 'About' },
 ]
 
@@ -229,7 +231,10 @@ export function SettingsPage() {
       })()}
 
       {/* Settings form */}
-      {activeTab !== 'about' ? (
+      {/* Themes tab */}
+      {activeTab === 'themes' ? (
+        <ThemesTab />
+      ) : activeTab !== 'about' ? (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="divide-y divide-border">
             {tabSettings.filter(s => !USAGE_FIELDS.includes(s.key)).map(setting => {
@@ -411,6 +416,39 @@ export function SettingsPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ThemesTab() {
+  const { theme, setTheme, resolved } = useTheme()
+
+  const options: Array<{ value: 'light' | 'dark' | 'system'; label: string; icon: typeof Sun; desc: string }> = [
+    { value: 'light', label: 'Light', icon: Sun, desc: 'Always use light theme' },
+    { value: 'dark', label: 'Dark', icon: Moon, desc: 'Always use dark theme' },
+    { value: 'system', label: 'System', icon: Monitor, desc: 'Follow your OS preference' },
+  ]
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="p-5">
+        <h3 className="text-sm font-medium mb-4">Appearance</h3>
+        <div className="grid grid-cols-3 gap-3">
+          {options.map(({ value, label, icon: Icon, desc }) => (
+            <button key={value} onClick={() => setTheme(value)}
+              className={`p-4 rounded-xl border-2 text-center transition-colors cursor-pointer ${
+                theme === value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
+              }`}>
+              <Icon className={`w-6 h-6 mx-auto mb-2 ${theme === value ? 'text-primary' : 'text-muted'}`} />
+              <p className="text-sm font-medium">{label}</p>
+              <p className="text-[10px] text-muted mt-1">{desc}</p>
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted mt-4 text-center">
+          Currently using: <strong>{resolved}</strong> theme
+        </p>
+      </div>
     </div>
   )
 }

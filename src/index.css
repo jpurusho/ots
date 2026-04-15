@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* Light theme (default) */
 @theme {
   --color-primary: #6366f1;
   --color-primary-foreground: #ffffff;
@@ -17,8 +18,9 @@
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Dark theme: class-based (.dark on html) OR system preference when no class */
 @media (prefers-color-scheme: dark) {
-  @theme {
+  html:not(.light) {
     --color-primary: #818cf8;
     --color-primary-foreground: #ffffff;
     --color-muted: #9ca3af;
@@ -32,6 +34,21 @@
     --color-success: #4ade80;
     --color-warning: #fbbf24;
   }
+}
+
+html.dark {
+  --color-primary: #818cf8;
+  --color-primary-foreground: #ffffff;
+  --color-muted: #9ca3af;
+  --color-muted-foreground: #6b7280;
+  --color-border: #374151;
+  --color-card: #1f2937;
+  --color-card-foreground: #f9fafb;
+  --color-background: #111827;
+  --color-foreground: #f9fafb;
+  --color-destructive: #f87171;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
 }
 
 body {
@@ -52,13 +69,11 @@ input[type="date"] {
 input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
   opacity: 0.7;
-  filter: invert(0.5);
   padding: 4px;
   margin-left: 4px;
 }
 
-@media (prefers-color-scheme: dark) {
-  input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: invert(0.8);
-  }
+html.dark input[type="date"]::-webkit-calendar-picker-indicator,
+html:not(.light) input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
 }

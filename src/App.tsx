@@ -20,6 +20,7 @@ import { Loader2, ShieldX } from 'lucide-react'
 import { isElectron, getElectronAPI } from '@/lib/electron-compat'
 import { initSupabase } from '@/lib/supabase'
 import { EnvProvider } from '@/lib/env-context'
+import { ThemeProvider } from '@/lib/theme-context'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -142,14 +143,16 @@ export default function App() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <EnvProvider>
-        <AuthProvider>
-          <BrowserRouter basename={import.meta.env.BASE_URL}>
-            <AuthGate />
-          </BrowserRouter>
-        </AuthProvider>
-      </EnvProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <EnvProvider>
+          <AuthProvider>
+            <BrowserRouter basename={import.meta.env.BASE_URL}>
+              <AuthGate />
+            </BrowserRouter>
+          </AuthProvider>
+        </EnvProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   )
 }
