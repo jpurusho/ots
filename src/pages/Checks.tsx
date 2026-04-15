@@ -198,7 +198,7 @@ export function ChecksPage() {
       title: churchName + ' — Check Contributions',
       subtitle: allChecks.length + ' checks',
       headers: ['Payer', 'Check #', 'Date', 'Category', 'Memo', 'Amount'],
-      rows: allChecks.map(c => [c.payer_name || 'Unknown', c.check_number || '—', c.offering_date || '—', (c.category || 'general').replace('_', ' '), c.memo || '—', fmt(c.amount || 0)]),
+      rows: allChecks.map(c => [c.payer_name || 'Unknown', c.check_number || '—', c.offering_date || '—', (c.category || 'general').replace('_', ' '), (c.memo || '—').substring(0, 40), fmt(c.amount || 0)]),
       footer_row: ['Grand Total', '', '', '', '', fmt(totalAmount)],
       filename: 'ots_check_contributions_' + today + '.pdf',
     }

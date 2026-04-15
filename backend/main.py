@@ -460,13 +460,16 @@ def _generate_pdf(title: str, subtitle: str, headers: list[str],
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from xml.sax.saxutils import escape
 
-    # Use landscape if many columns
-    page = landscape(letter) if len(headers) > 5 else letter
+    num_cols = len(headers)
+    page = landscape(letter) if num_cols > 5 else letter
+    page_width = page[0]
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=page, topMargin=0.5*inch, bottomMargin=0.5*inch,
                             leftMargin=0.5*inch, rightMargin=0.5*inch)
+    avail_width = page_width - 1.0 * inch
     styles = getSampleStyleSheet()
     elements = []
 
@@ -475,50 +478,96 @@ def _generate_pdf(title: str, subtitle: str, headers: list[str],
                                   fontSize=16, textColor=colors.HexColor('#4f46e5'), spaceAfter=4)
     sub_style = ParagraphStyle('ReportSub', parent=styles['Normal'],
                                 fontSize=10, textColor=colors.HexColor('#64748b'), spaceAfter=16)
-    elements.append(Paragraph(title, title_style))
+    elements.append(Paragraph(escape(title), title_style))
     if subtitle:
-        elements.append(Paragraph(subtitle, sub_style))
+        elements.append(Paragraph(escape(subtitle), sub_style))
 
-    # Build table
-    table_data = [headers] + rows
+    # Cell styles for wrapping text
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10)
+    cell_right = ParagraphStyle('CellRight', parent=cell_style, alignment=2)  # 2=RIGHT
+    cell_bold = ParagraphStyle('CellBold', parent=cell_style, fontName='Helvetica-Bold')
+    cell_bold_right = ParagraphStyle('CellBoldRight', parent=cell_bold, alignment=2)
+    header_style = ParagraphStyle('HeaderCell', parent=styles['Normal'],
+                                   fontSize=7, fontName='Helvetica-Bold',
+                                   textColor=colors.HexColor('#64748b'), leading=9)
+    header_right = ParagraphStyle('HeaderRight', parent=header_style, alignment=2)
+    footer_cell = ParagraphStyle('FooterCell', parent=cell_bold, textColor=colors.white)
+    footer_right = ParagraphStyle('FooterRight', parent=footer_cell, alignment=2)
+
+    # Detect which columns are amounts (last column is usually amount/total)
+    amount_cols = set()
+    for i, h in enumerate(headers):
+        hl = h.lower()
+        if any(k in hl for k in ['amount', 'total', 'general', 'cash', 'sunday', 'building', 'misc']):
+            amount_cols.add(i)
+    # Last column is often a total
+    if num_cols > 2:
+        amount_cols.add(num_cols - 1)
+
+    # Convert strings to Paragraph objects for text wrapping
+    def make_row(cells, is_header=False, is_footer=False):
+        result = []
+        for i, cell in enumerate(cells):
+            text = escape(str(cell)) if cell else ''
+            if is_header:
+                style = header_right if i in amount_cols else header_style
+            elif is_footer:
+                style = footer_right if i in amount_cols else footer_cell
+            else:
+                style = cell_right if i in amount_cols else cell_style
+            result.append(Paragraph(text, style))
+        return result
+
+    table_data = [make_row(headers, is_header=True)]
+    for row in rows:
+        table_data.append(make_row(row))
     if footer_row:
-        table_data.append(footer_row)
+        table_data.append(make_row(footer_row, is_footer=True))
 
-    if len(table_data) > 1:
-        t = Table(table_data, repeatRows=1)
-        style_cmds = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#64748b')),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-            ('TOPPADDING', (0, 0), (-1, 0), 8),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('TOPPADDING', (0, 1), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
-            ('LINEBELOW', (0, 0), (-1, -2), 0.5, colors.HexColor('#e5e7eb')),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('LINEABOVE', (0, 0), (-1, 0), 1.5, colors.HexColor('#4f46e5')),
-        ]
-        for i in range(1, len(table_data)):
-            if i % 2 == 0:
-                style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f8fafc')))
-        if footer_row:
-            last_idx = len(table_data) - 1
-            style_cmds.extend([
-                ('BACKGROUND', (0, last_idx), (-1, last_idx), colors.HexColor('#4f46e5')),
-                ('TEXTCOLOR', (0, last_idx), (-1, last_idx), colors.white),
-                ('FONTNAME', (0, last_idx), (-1, last_idx), 'Helvetica-Bold'),
-                ('LINEABOVE', (0, last_idx), (-1, last_idx), 1.5, colors.HexColor('#4f46e5')),
-            ])
-        t.setStyle(TableStyle(style_cmds))
-        elements.append(t)
+    # Column widths: distribute evenly but give more to text columns
+    if num_cols > 0:
+        col_widths = []
+        for i in range(num_cols):
+            if i in amount_cols:
+                col_widths.append(avail_width * 0.10)
+            else:
+                col_widths.append(None)  # auto
+        # Calculate remaining width for auto columns
+        fixed = sum(w for w in col_widths if w is not None)
+        auto_count = sum(1 for w in col_widths if w is None)
+        if auto_count > 0:
+            auto_width = (avail_width - fixed) / auto_count
+            col_widths = [w if w is not None else auto_width for w in col_widths]
+    else:
+        col_widths = None
+
+    t = Table(table_data, colWidths=col_widths, repeatRows=1)
+    style_cmds = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
+        ('TOPPADDING', (0, 1), (-1, -1), 4),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.5, colors.HexColor('#e5e7eb')),
+        ('LINEABOVE', (0, 0), (-1, 0), 1.5, colors.HexColor('#4f46e5')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]
+    for i in range(1, len(table_data)):
+        if i % 2 == 0:
+            style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f8fafc')))
+    if footer_row:
+        last_idx = len(table_data) - 1
+        style_cmds.extend([
+            ('BACKGROUND', (0, last_idx), (-1, last_idx), colors.HexColor('#4f46e5')),
+            ('LINEABOVE', (0, last_idx), (-1, last_idx), 1.5, colors.HexColor('#4f46e5')),
+        ])
+    t.setStyle(TableStyle(style_cmds))
+    elements.append(t)
 
     elements.append(Spacer(1, 20))
-    footer_style = ParagraphStyle('Footer', parent=styles['Normal'],
-                                   fontSize=8, textColor=colors.HexColor('#94a3b8'))
-    elements.append(Paragraph(f'Generated by OTS on {__import__("datetime").date.today().strftime("%m/%d/%Y")}', footer_style))
+    gen_footer = ParagraphStyle('Footer', parent=styles['Normal'],
+                                 fontSize=8, textColor=colors.HexColor('#94a3b8'))
+    elements.append(Paragraph(f'Generated by OTS on {__import__("datetime").date.today().strftime("%m/%d/%Y")}', gen_footer))
 
     doc.build(elements)
     return buf.getvalue()
