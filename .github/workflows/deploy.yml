@@ -34,11 +34,11 @@ jobs:
           VITE_BOOTSTRAP_ADMIN: ${{ vars.VITE_BOOTSTRAP_ADMIN }}
 
       # SPA routing workaround — all routes serve index.html
-      - run: cp dist/index.html dist/404.html
+      - run: cp dist/renderer/index.html dist/renderer/404.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: dist/renderer
 
   deploy:
     needs: build

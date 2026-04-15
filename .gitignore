@@ -1,6 +1,9 @@
 # Node
 node_modules/
 dist/
+release/
+*.dmg
+*.zip
 
 # Supabase local
 supabase/.temp/

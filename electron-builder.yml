@@ -1,0 +1,33 @@
+appId: com.ots.app
+productName: OTS
+copyright: Copyright © 2026 Jerome Purushotham
+
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - dist/**/*
+  - node_modules/**/*
+  - "!node_modules/**/{test,tests,__tests__}/**"
+  - "!node_modules/**/*.{md,ts,map}"
+  - "!src/**"
+  - "!electron/**"
+  - "!backend/**"
+  - "!supabase/**"
+  - "!scripts/**"
+  - "!docs/**"
+
+mac:
+  category: public.app-category.productivity
+  icon: resources/icon.icns
+  target:
+    - target: zip
+      arch: [universal]
+  darkModeSupport: true
+  identity: null
+
+publish:
+  provider: github
+  owner: jpurusho
+  repo: ots
