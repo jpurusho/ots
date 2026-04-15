@@ -312,6 +312,12 @@ def scan_image(image_bytes: bytes, media_type: str, filename: str,
         }],
     )
 
+    # Extract usage info
+    usage = {
+        "input_tokens": getattr(resp.usage, 'input_tokens', 0),
+        "output_tokens": getattr(resp.usage, 'output_tokens', 0),
+    }
+
     text = resp.content[0].text.strip()
     if not text:
         raise ValueError(f"Claude returned empty response for {filename}")
@@ -331,5 +337,6 @@ def scan_image(image_bytes: bytes, media_type: str, filename: str,
         items[i] = verify_and_compute_totals(item)
         items[i]["filename"] = filename
         items[i]["slip_number"] = item.get("slip_number", i + 1)
+        items[i]["usage"] = usage
 
     return items

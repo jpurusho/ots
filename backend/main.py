@@ -251,6 +251,23 @@ async def scan_offering(req: ScanRequest):
             except Exception as e:
                 print(f"[Scan] Failed to create check record: {e}")
 
+    # Track API usage
+    usage = item.get("usage", {})
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    if input_tokens > 0 or output_tokens > 0:
+        try:
+            # Sonnet pricing: $3/M input, $15/M output
+            cost = (input_tokens * 3 + output_tokens * 15) / 1_000_000
+            # Update cumulative counters
+            for key, val in [("api_total_input_tokens", input_tokens), ("api_total_output_tokens", output_tokens),
+                             ("api_total_scans", 1), ("api_total_cost", cost)]:
+                current = _get_setting(key)
+                new_val = float(current or 0) + val
+                supabase.table("app_settings").update({"value": str(new_val)}).eq("key", key).execute()
+        except Exception as e:
+            print(f"[Scan] Usage tracking failed: {e}")
+
     return {
         "success": True,
         "offering_id": req.offering_id,
@@ -259,6 +276,7 @@ async def scan_offering(req: ScanRequest):
         "categories": categories,
         "slips_found": len(results),
         "checks_created": check_records_created,
+        "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
     }
 
 

@@ -30,6 +30,8 @@ const SENSITIVE_FIELDS = ['google_drive_credentials', 'smtp_password', 'anthropi
 const FILE_PICKER_FIELDS = ['google_drive_credentials']
 // Fields that use Drive folder picker
 const FOLDER_PICKER_FIELDS = ['drive_images_folder_id', 'drive_reports_folder_id']
+// Read-only usage stats (shown as card, not editable)
+const USAGE_FIELDS = ['api_total_input_tokens', 'api_total_output_tokens', 'api_total_scans', 'api_total_cost']
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
@@ -192,11 +194,45 @@ export function SettingsPage() {
         ))}
       </div>
 
+      {/* API Usage card (AI tab only) */}
+      {activeTab === 'ai' && (() => {
+        const usageSettings = tabSettings.filter(s => USAGE_FIELDS.includes(s.key))
+        if (usageSettings.length === 0) return null
+        const scans = parseFloat(formValues['api_total_scans'] || '0')
+        const inputTokens = parseFloat(formValues['api_total_input_tokens'] || '0')
+        const outputTokens = parseFloat(formValues['api_total_output_tokens'] || '0')
+        const cost = parseFloat(formValues['api_total_cost'] || '0')
+        return scans > 0 ? (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
+            <h3 className="text-sm font-medium mb-3">API Usage</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold">{scans.toFixed(0)}</p>
+                <p className="text-[10px] text-muted uppercase">Scans</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold">{(inputTokens / 1000).toFixed(1)}K</p>
+                <p className="text-[10px] text-muted uppercase">Input Tokens</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold">{(outputTokens / 1000).toFixed(1)}K</p>
+                <p className="text-[10px] text-muted uppercase">Output Tokens</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-primary">${cost.toFixed(4)}</p>
+                <p className="text-[10px] text-muted uppercase">Est. Cost</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted mt-3 text-center">Sonnet pricing: $3/M input, $15/M output</p>
+          </div>
+        ) : null
+      })()}
+
       {/* Settings form */}
       {activeTab !== 'about' ? (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="divide-y divide-border">
-            {tabSettings.map(setting => {
+            {tabSettings.filter(s => !USAGE_FIELDS.includes(s.key)).map(setting => {
               const isSensitive = SENSITIVE_FIELDS.includes(setting.key)
               const isTextarea = TEXTAREA_FIELDS.includes(setting.key)
               const isVisible = !isSensitive || showSensitive[setting.key]
