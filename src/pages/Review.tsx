@@ -353,23 +353,6 @@ export function ReviewPage() {
     },
   })
 
-  const discardMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const { error } = await supabase
-        .from('offerings')
-        .update({ status: 'discarded', locked: 2, locked_at: new Date().toISOString() })
-        .eq('id', id)
-      if (error) throw error
-      const o = offerings?.find(o => o.id === id)
-      logActivity(appUser?.email || null, 'discard',
-        `Discarded ${o?.filename || `offering #${id}`}`, 'offering', id)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['offerings'] })
-      setSelectedId(null)
-    },
-  })
-
   // Delete offering permanently (including image from storage and linked checks)
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -830,18 +813,11 @@ export function ReviewPage() {
                 </button>
               )}
               {selected.status !== 'approved' ? (
-                <>
-                  <button onClick={() => approveMutation.mutate(selected.id)} disabled={approveMutation.isPending}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-success text-white font-medium text-sm hover:bg-success/90 transition-colors cursor-pointer disabled:opacity-50">
-                    {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                    Approve
-                  </button>
-                  <button onClick={() => discardMutation.mutate(selected.id)} disabled={discardMutation.isPending}
-                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50">
-                    <Trash2 className="w-4 h-4" />
-                    Discard
-                  </button>
-                </>
+                <button onClick={() => approveMutation.mutate(selected.id)} disabled={approveMutation.isPending}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-success text-white font-medium text-sm hover:bg-success/90 transition-colors cursor-pointer disabled:opacity-50">
+                  {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Approve
+                </button>
               ) : (
                 <span className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-success/10 text-success text-sm">
                   <CheckCircle className="w-4 h-4" />
@@ -852,7 +828,7 @@ export function ReviewPage() {
                 onClick={() => deleteMutation.mutate(selected.id)}
                 disabled={deleteMutation.isPending}
                 className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-destructive text-sm hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50"
-                title="Delete permanently"
+                title="Delete"
               >
                 {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               </button>
