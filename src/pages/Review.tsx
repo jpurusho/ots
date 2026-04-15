@@ -824,14 +824,17 @@ export function ReviewPage() {
                   Approved
                 </span>
               )}
-              <button
-                onClick={() => deleteMutation.mutate(selected.id)}
-                disabled={deleteMutation.isPending}
-                className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-destructive text-sm hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50"
-                title="Delete"
-              >
-                {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              </button>
+              {/* Delete: always for admin, only pending for operators */}
+              {(appUser?.role === 'admin' || selected.status !== 'approved') && (
+                <button
+                  onClick={() => deleteMutation.mutate(selected.id)}
+                  disabled={deleteMutation.isPending}
+                  className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-destructive text-sm hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Delete"
+                >
+                  {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </button>
+              )}
             </div>
           </div>
         </div>

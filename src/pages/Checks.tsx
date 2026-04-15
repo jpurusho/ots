@@ -279,7 +279,7 @@ export function ChecksPage() {
                 <th className="px-4 py-2 text-left text-xs font-medium text-muted">Category</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-muted">Memo</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-muted">Amount</th>
-                <th className="px-4 py-2 w-8"></th>
+                {appUser?.role === 'admin' && <th className="px-4 py-2 w-8"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -295,24 +295,25 @@ export function ChecksPage() {
                   </td>
                   <td className="px-4 py-2 text-xs text-muted">{c.memo || '—'}</td>
                   <td className="px-4 py-2 text-right font-bold">{fmt(c.amount || 0)}</td>
-                  <td className="px-4 py-2">
-                    <button onClick={(e) => {
-                      e.stopPropagation()
-                      
+                  {appUser?.role === 'admin' && (
+                    <td className="px-4 py-2">
+                      <button onClick={(e) => {
+                        e.stopPropagation()
                         deleteCheckMutation.mutate(c)
-                    }}
-                      className="p-1 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
+                      }}
+                        className="p-1 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="bg-card border-t-2 border-border font-bold">
-                <td colSpan={5} className="px-4 py-2">Total</td>
+                <td colSpan={appUser?.role === 'admin' ? 5 : 5} className="px-4 py-2">Total</td>
                 <td className="px-4 py-2 text-right text-primary">{fmt(selectedContrib.total)}</td>
-                <td className="w-8"></td>
+                {appUser?.role === 'admin' && <td className="w-8"></td>}
               </tr>
             </tfoot>
           </table>
@@ -433,7 +434,7 @@ export function ChecksPage() {
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted">Category</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted">Memo</th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-muted">Amount</th>
-                    <th className="px-4 py-2 w-8"></th>
+                    {appUser?.role === 'admin' && <th className="px-4 py-2 w-8"></th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -450,16 +451,17 @@ export function ChecksPage() {
                       </td>
                       <td className="px-4 py-2 text-xs text-muted">{c.memo || '—'}</td>
                       <td className="px-4 py-2 text-right font-bold">{fmt(c.amount || 0)}</td>
-                      <td className="px-4 py-2">
-                        <button onClick={(e) => {
-                          e.stopPropagation()
-                          
+                      {appUser?.role === 'admin' && (
+                        <td className="px-4 py-2">
+                          <button onClick={(e) => {
+                            e.stopPropagation()
                             deleteCheckMutation.mutate(c)
-                        }}
-                          className="p-1 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
+                          }}
+                            className="p-1 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -467,7 +469,7 @@ export function ChecksPage() {
                   <tr className="bg-card border-t-2 border-border font-bold">
                     <td colSpan={5} className="px-4 py-2">Grand Total</td>
                     <td className="px-4 py-2 text-right text-primary">{fmt(totalAmount)}</td>
-                    <td className="w-8"></td>
+                    {appUser?.role === 'admin' && <td className="w-8"></td>}
                   </tr>
                 </tfoot>
               </table>
