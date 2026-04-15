@@ -308,6 +308,16 @@ class DriveUploadReportRequest(BaseModel):
     mime_type: str = "application/pdf"
 
 
+class GeneratePdfRequest(BaseModel):
+    title: str
+    subtitle: str
+    headers: list[str]
+    rows: list[list[str]]
+    footer_row: list[str] | None = None
+    filename: str = "report.pdf"
+    upload_to_drive: bool = False
+
+
 @app.get("/api/drive/folders")
 async def browse_drive_folders(parent: str = "root"):
     """Browse Drive folders for the folder picker."""
@@ -441,66 +451,35 @@ async def import_from_drive(req: DriveImportRequest):
     }
 
 
-def _html_to_pdf(html_content: str) -> bytes:
-    """Convert styled HTML report to PDF using ReportLab.
-    Parses the HTML to extract table data and renders a clean PDF."""
+def _generate_pdf(title: str, subtitle: str, headers: list[str],
+                   rows: list[list[str]], footer_row: list[str] | None = None) -> bytes:
+    """Generate a styled PDF from structured table data using ReportLab."""
     import io
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.pagesizes import letter, landscape
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    import re
+
+    # Use landscape if many columns
+    page = landscape(letter) if len(headers) > 5 else letter
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    doc = SimpleDocTemplate(buf, pagesize=page, topMargin=0.5*inch, bottomMargin=0.5*inch,
+                            leftMargin=0.5*inch, rightMargin=0.5*inch)
     styles = getSampleStyleSheet()
     elements = []
 
-    # Extract title and subtitle from HTML
-    title_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content)
-    subtitle_match = re.search(r'<h2[^>]*>(.*?)</h2>', html_content)
-    title_text = title_match.group(1) if title_match else 'Offering Report'
-    subtitle_text = subtitle_match.group(1) if subtitle_match else ''
-
-    # Header
+    # Title
     title_style = ParagraphStyle('ReportTitle', parent=styles['Heading1'],
                                   fontSize=16, textColor=colors.HexColor('#4f46e5'), spaceAfter=4)
     sub_style = ParagraphStyle('ReportSub', parent=styles['Normal'],
                                 fontSize=10, textColor=colors.HexColor('#64748b'), spaceAfter=16)
-    elements.append(Paragraph(title_text, title_style))
-    if subtitle_text:
-        elements.append(Paragraph(subtitle_text, sub_style))
+    elements.append(Paragraph(title, title_style))
+    if subtitle:
+        elements.append(Paragraph(subtitle, sub_style))
 
-    # Extract table rows from HTML
-    headers = ['Date', 'General', 'Cash', 'Sunday School', 'Building Fund', 'Misc', 'Total']
-
-    # Parse <tbody> rows
-    row_pattern = re.compile(r'<tr[^>]*>(.*?)</tr>', re.DOTALL)
-    cell_pattern = re.compile(r'<td[^>]*>(.*?)</td>', re.DOTALL)
-    tag_strip = re.compile(r'<[^>]+>')
-
-    rows = []
-    # Find tbody content
-    tbody_match = re.search(r'<tbody>(.*?)</tbody>', html_content, re.DOTALL)
-    if tbody_match:
-        for row_match in row_pattern.finditer(tbody_match.group(1)):
-            cells = cell_pattern.findall(row_match.group(1))
-            cleaned = [tag_strip.sub('', c).strip() for c in cells]
-            if cleaned:
-                rows.append(cleaned)
-
-    # Find tfoot content
-    tfoot_match = re.search(r'<tfoot>(.*?)</tfoot>', html_content, re.DOTALL)
-    footer_row = None
-    if tfoot_match:
-        for row_match in row_pattern.finditer(tfoot_match.group(1)):
-            cells = cell_pattern.findall(row_match.group(1))
-            cleaned = [tag_strip.sub('', c).strip() for c in cells]
-            if cleaned:
-                footer_row = cleaned
-
-    # Build table data
+    # Build table
     table_data = [headers] + rows
     if footer_row:
         table_data.append(footer_row)
@@ -508,29 +487,23 @@ def _html_to_pdf(html_content: str) -> bytes:
     if len(table_data) > 1:
         t = Table(table_data, repeatRows=1)
         style_cmds = [
-            # Header
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#64748b')),
             ('FONTSIZE', (0, 0), (-1, 0), 8),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
             ('TOPPADDING', (0, 0), (-1, 0), 8),
-            # Body
             ('FONTSIZE', (0, 1), (-1, -1), 9),
             ('TOPPADDING', (0, 1), (-1, -1), 5),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
             ('LINEBELOW', (0, 0), (-1, -2), 0.5, colors.HexColor('#e5e7eb')),
-            # Alignment
             ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            # Grid
             ('LINEABOVE', (0, 0), (-1, 0), 1.5, colors.HexColor('#4f46e5')),
         ]
-        # Alternating row colors
         for i in range(1, len(table_data)):
             if i % 2 == 0:
                 style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f8fafc')))
-        # Footer row
         if footer_row:
             last_idx = len(table_data) - 1
             style_cmds.extend([
@@ -539,11 +512,9 @@ def _html_to_pdf(html_content: str) -> bytes:
                 ('FONTNAME', (0, last_idx), (-1, last_idx), 'Helvetica-Bold'),
                 ('LINEABOVE', (0, last_idx), (-1, last_idx), 1.5, colors.HexColor('#4f46e5')),
             ])
-
         t.setStyle(TableStyle(style_cmds))
         elements.append(t)
 
-    # Footer
     elements.append(Spacer(1, 20))
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'],
                                    fontSize=8, textColor=colors.HexColor('#94a3b8'))
@@ -553,9 +524,38 @@ def _html_to_pdf(html_content: str) -> bytes:
     return buf.getvalue()
 
 
+@app.post("/api/pdf/generate")
+async def generate_pdf(req: GeneratePdfRequest):
+    """Generate a PDF from structured data. Optionally upload to Drive.
+    Returns the PDF as base64 for frontend download."""
+    try:
+        pdf_bytes = _generate_pdf(req.title, req.subtitle, req.headers, req.rows, req.footer_row)
+
+        result: dict = {"success": True, "size": len(pdf_bytes)}
+
+        # Upload to Drive if requested
+        if req.upload_to_drive:
+            creds = _get_setting("google_drive_credentials")
+            folder_id = _get_setting("drive_reports_folder_id")
+            if creds and folder_id:
+                service = get_drive_service(creds)
+                drive_result = upload_to_drive(service, folder_id, req.filename, pdf_bytes, 'application/pdf')
+                result["drive"] = {"file_id": drive_result.get("id"), "name": drive_result.get("name"),
+                                   "link": drive_result.get("webViewLink")}
+            else:
+                result["drive_error"] = "Drive not configured"
+
+        # Return PDF as base64 for download
+        result["pdf_base64"] = base64.b64encode(pdf_bytes).decode()
+        result["filename"] = req.filename
+        return result
+    except Exception as e:
+        raise HTTPException(500, f"PDF generation failed: {e}")
+
+
 @app.post("/api/drive/upload-report")
 async def upload_report_to_drive(req: DriveUploadReportRequest):
-    """Upload a generated report as PDF to Google Drive reports folder."""
+    """Upload a generated report as PDF to Google Drive reports folder (legacy HTML route)."""
     creds = _get_setting("google_drive_credentials")
     if not creds:
         raise HTTPException(400, "No service account credentials configured")
@@ -564,14 +564,16 @@ async def upload_report_to_drive(req: DriveUploadReportRequest):
     if not folder_id:
         raise HTTPException(400, "No Drive reports folder configured")
 
-    import base64
     try:
         html_content = base64.b64decode(req.content_base64).decode('utf-8')
 
-        # Convert HTML to PDF
-        pdf_bytes = _html_to_pdf(html_content)
+        # For legacy HTML route, try to parse basic structure
+        import re
+        title_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content)
+        title = title_match.group(1) if title_match else 'Report'
+        # Generate a simple PDF
+        pdf_bytes = _generate_pdf(title, '', ['Report'], [['See attached HTML']], None)
 
-        # Change filename extension to .pdf
         filename = req.filename
         if filename.endswith('.html'):
             filename = filename[:-5] + '.pdf'

@@ -3,10 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { logActivity } from '@/lib/activity'
 import { useAuth } from '@/lib/auth-context'
-import { Loader2, Receipt, Users, DollarSign, Wallet, Printer, ArrowLeft, Trash2, Search, CalendarRange, CloudUpload, Download } from 'lucide-react'
+import { Loader2, Receipt, Users, DollarSign, Wallet, ArrowLeft, Trash2, Search, CalendarRange, CloudUpload, Download, Printer } from 'lucide-react'
 import { openReport } from '@/lib/print-utils'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { generateAndDownloadPdf, generateAndUploadPdf } from '@/lib/pdf-utils'
 
 interface Check {
   id: number
@@ -172,28 +171,6 @@ export function ChecksPage() {
   const selectedContrib = selectedContributor ? contributorMap.get(selectedContributor) : null
 
   // HTML builders (reusable for print, Drive upload)
-  const buildAllChecksHtml = () => {
-    const rows = allChecks.map(c =>
-      '<tr><td>' + (c.payer_name || 'Unknown') + '</td><td>' + (c.check_number || '—') +
-      '</td><td>' + (c.offering_date || '—') + '</td><td>' + ((c.category || 'general').replace('_', ' ')) +
-      '</td><td>' + (c.memo || '—') + '</td><td class="right">' + fmt(c.amount || 0) + '</td></tr>'
-    ).join('')
-    return '<table><thead><tr><th>Payer</th><th>Check #</th><th>Date</th><th>Category</th><th>Memo</th><th class="right">Amount</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-      '<tfoot><tr><td colspan="5"><strong>Grand Total</strong></td><td class="right">' + fmt(totalAmount) + '</td></tr></tfoot></table>'
-  }
-
-  const buildYearEndHtml = () => {
-    const rows = yearStatements.map(s =>
-      '<tr><td>' + s.payer_name + '</td><td style="text-align:center">' + s.count +
-      '</td><td>' + s.firstDate + ' — ' + s.lastDate + '</td><td class="right">' + fmt(s.total) + '</td></tr>'
-    ).join('')
-    const yearTotal = yearStatements.reduce((s, r) => s + r.total, 0)
-    return '<table><thead><tr><th>Contributor</th><th style="text-align:center">Checks</th><th>Period</th><th class="right">Total</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-      '<tfoot><tr><td colspan="3"><strong>Grand Total (' + yearStatements.length + ' contributors)</strong></td><td class="right">' + fmt(yearTotal) + '</td></tr></tfoot></table>'
-  }
-
   const buildContributorHtml = (contrib: Contributor) => {
     const rows = contrib.checks.map(c =>
       '<tr><td>' + (c.offering_date || '—') + '</td><td>' + (c.check_number || '—') +
@@ -205,39 +182,39 @@ export function ChecksPage() {
       '<tfoot><tr><td colspan="5"><strong>Total (' + contrib.count + ' checks)</strong></td><td class="right">' + fmt(contrib.total) + '</td></tr></tfoot></table>'
   }
 
-  const getReportTitle = () => tab === 'statements' ? 'Year-End Summary — ' + statementsYear : 'Check Contributions'
-  const getReportSubtitle = () => tab === 'statements' ? yearStatements.length + ' contributors' : allChecks.length + ' checks'
-  const getReportHtml = () => tab === 'statements' ? buildYearEndHtml() : buildAllChecksHtml()
+  const getPdfData = () => {
+    const today = new Date().toISOString().split('T')[0]
+    if (tab === 'statements') {
+      return {
+        title: churchName + ' — Year-End Summary',
+        subtitle: statementsYear + ' — ' + yearStatements.length + ' contributors',
+        headers: ['Contributor', 'Checks', 'Period', 'Total'],
+        rows: yearStatements.map(s => [s.payer_name, String(s.count), s.firstDate + ' — ' + s.lastDate, fmt(s.total)]),
+        footer_row: ['Grand Total', String(yearStatements.reduce((s, r) => s + r.count, 0)), '', fmt(yearStatements.reduce((s, r) => s + r.total, 0))],
+        filename: 'ots_year_end_' + statementsYear + '_' + today + '.pdf',
+      }
+    }
+    return {
+      title: churchName + ' — Check Contributions',
+      subtitle: allChecks.length + ' checks',
+      headers: ['Payer', 'Check #', 'Date', 'Category', 'Memo', 'Amount'],
+      rows: allChecks.map(c => [c.payer_name || 'Unknown', c.check_number || '—', c.offering_date || '—', (c.category || 'general').replace('_', ' '), c.memo || '—', fmt(c.amount || 0)]),
+      footer_row: ['Grand Total', '', '', '', '', fmt(totalAmount)],
+      filename: 'ots_check_contributions_' + today + '.pdf',
+    }
+  }
 
-  const uploadToDrive = async (reportTitle: string, subtitle: string, html: string) => {
-    const fullHtml = '<!DOCTYPE html><html><head><style>' +
-      'body{font-family:system-ui,sans-serif;margin:30px;color:#1a1a2e}' +
-      'h1{font-size:18px;margin:0 0 4px;color:#4f46e5}' +
-      'h2{font-size:13px;color:#64748b;font-weight:normal;margin:0 0 20px}' +
-      'table{width:100%;border-collapse:collapse;font-size:12px}' +
-      'th{padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #4f46e5;background:#f1f5f9}' +
-      '.right{text-align:right}' +
-      'td{padding:6px 10px;border-bottom:1px solid #e5e7eb}' +
-      'tr:nth-child(even){background:#f8fafc}' +
-      'tfoot tr{background:#4f46e5;color:white}' +
-      'tfoot td{font-weight:bold;border:none;padding:8px 10px}' +
-      '</style></head><body>' +
-      '<h1>' + reportTitle + '</h1><h2>' + subtitle + '</h2>' +
-      html + '</body></html>'
+  const handlePdf = async () => {
+    try { await generateAndDownloadPdf(getPdfData()) }
+    catch (err) { alert(err instanceof Error ? err.message : 'PDF generation failed') }
+  }
+
+  const handleDriveUpload = async () => {
     try {
-      const resp = await fetch(BACKEND_URL + '/api/drive/upload-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: reportTitle.replace(/\s+/g, '_') + '.pdf',
-          content_base64: btoa(unescape(encodeURIComponent(fullHtml))),
-          mime_type: 'text/html',
-        }),
-      })
-      const data = await resp.json()
-      if (data.success) alert('PDF uploaded to Drive: ' + data.name)
-      else alert(data.detail || data.error || 'Upload failed')
-    } catch (err) { alert(err instanceof Error ? err.message : 'Failed') }
+      const data = await generateAndUploadPdf(getPdfData())
+      if (data.drive) alert('PDF uploaded to Drive: ' + data.drive.name)
+      else if (data.drive_error) alert(data.drive_error)
+    } catch (err) { alert(err instanceof Error ? err.message : 'Drive upload failed') }
   }
 
   const exportCsv = () => {
@@ -425,11 +402,11 @@ export function ChecksPage() {
             <div className="flex gap-2">
               {(tab === 'checks' || (tab === 'statements' && yearStatements.length > 0)) && (
                 <>
-                  <button onClick={() => openReport(churchName, getReportSubtitle(), getReportHtml())}
+                  <button onClick={handlePdf}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer">
-                    <Printer className="w-3.5 h-3.5" /> PDF
+                    <Download className="w-3.5 h-3.5" /> PDF
                   </button>
-                  <button onClick={() => uploadToDrive(churchName + ' — ' + getReportTitle(), getReportSubtitle(), getReportHtml())}
+                  <button onClick={handleDriveUpload}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
                     <CloudUpload className="w-3.5 h-3.5" /> Drive
                   </button>
