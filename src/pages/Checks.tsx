@@ -310,8 +310,9 @@ export function ChecksPage() {
             </tbody>
             <tfoot>
               <tr className="bg-card border-t-2 border-border font-bold">
-                <td colSpan={6} className="px-4 py-2">Total</td>
+                <td colSpan={5} className="px-4 py-2">Total</td>
                 <td className="px-4 py-2 text-right text-primary">{fmt(selectedContrib.total)}</td>
+                <td className="w-8"></td>
               </tr>
             </tfoot>
           </table>
@@ -464,8 +465,9 @@ export function ChecksPage() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-card border-t-2 border-border font-bold">
-                    <td colSpan={6} className="px-4 py-2">Grand Total</td>
+                    <td colSpan={5} className="px-4 py-2">Grand Total</td>
                     <td className="px-4 py-2 text-right text-primary">{fmt(totalAmount)}</td>
+                    <td className="w-8"></td>
                   </tr>
                 </tfoot>
               </table>
