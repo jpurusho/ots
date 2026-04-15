@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { logActivity } from '@/lib/activity'
 import {
   CheckCircle, Loader2, ChevronLeft, ChevronRight,
-  Eye, Pencil, Save, RotateCcw, Trash2, FileText, RefreshCw, Search,
+  Eye, Pencil, Save, RotateCcw, Trash2, FileText, RefreshCw, Search, PenLine,
 } from 'lucide-react'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
@@ -27,6 +27,7 @@ type Offering = {
   image_path: string | null
   created_at: string
   scan_error: string | null
+  source_type: string | null
 }
 
 interface ScanSection {
@@ -676,7 +677,16 @@ export function ReviewPage() {
                   }}
                 />
               ) : (
-                <p className="text-muted text-sm">No image available</p>
+                <div className="flex flex-col items-center gap-2">
+                  {selected.source_type === 'manual' ? (
+                    <>
+                      <PenLine className="w-12 h-12 text-muted/30" />
+                      <p className="text-muted/50 text-lg font-bold uppercase tracking-widest">Manual Entry</p>
+                    </>
+                  ) : (
+                    <p className="text-muted text-sm">No image available</p>
+                  )}
+                </div>
               )}
             </div>
             <div className="px-4 py-1.5 border-t border-border text-[10px] text-muted text-center">
@@ -811,12 +821,14 @@ export function ReviewPage() {
 
             {/* Actions */}
             <div className="px-4 py-3 border-t border-border flex gap-2">
-              <button onClick={() => rescanMutation.mutate(selected.id)}
-                disabled={rescanMutation.isPending}
-                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted-foreground/10 transition-colors cursor-pointer disabled:opacity-50">
-                {rescanMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Rescan
-              </button>
+              {selected.source_type !== 'manual' && (
+                <button onClick={() => rescanMutation.mutate(selected.id)}
+                  disabled={rescanMutation.isPending}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted-foreground/10 transition-colors cursor-pointer disabled:opacity-50">
+                  {rescanMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Rescan
+                </button>
+              )}
               {selected.status !== 'approved' ? (
                 <>
                   <button onClick={() => approveMutation.mutate(selected.id)} disabled={approveMutation.isPending}
