@@ -202,7 +202,7 @@ export function SettingsPage() {
         const inputTokens = parseFloat(formValues['api_total_input_tokens'] || '0')
         const outputTokens = parseFloat(formValues['api_total_output_tokens'] || '0')
         const cost = parseFloat(formValues['api_total_cost'] || '0')
-        return scans > 0 ? (
+        return (
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
             <h3 className="text-sm font-medium mb-3">API Usage</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -211,11 +211,11 @@ export function SettingsPage() {
                 <p className="text-[10px] text-muted uppercase">Scans</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold">{(inputTokens / 1000).toFixed(1)}K</p>
+                <p className="text-2xl font-bold">{inputTokens >= 1000 ? (inputTokens / 1000).toFixed(1) + 'K' : inputTokens.toFixed(0)}</p>
                 <p className="text-[10px] text-muted uppercase">Input Tokens</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold">{(outputTokens / 1000).toFixed(1)}K</p>
+                <p className="text-2xl font-bold">{outputTokens >= 1000 ? (outputTokens / 1000).toFixed(1) + 'K' : outputTokens.toFixed(0)}</p>
                 <p className="text-[10px] text-muted uppercase">Output Tokens</p>
               </div>
               <div className="text-center">
@@ -225,7 +225,7 @@ export function SettingsPage() {
             </div>
             <p className="text-[10px] text-muted mt-3 text-center">Sonnet pricing: $3/M input, $15/M output</p>
           </div>
-        ) : null
+        )
       })()}
 
       {/* Settings form */}
