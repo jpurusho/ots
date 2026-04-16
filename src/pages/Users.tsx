@@ -3,7 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 import { isElectron, getElectronAPI } from '@/lib/electron-compat'
-import { UserPlus, Shield, ShieldOff, Loader2, Trash2, Users, Send, Copy, Check, Clock, CheckCircle } from 'lucide-react'
+import { useEnv } from '@/lib/env-context'
+import { getBackendUrl } from '@/lib/backend'
+import { UserPlus, Shield, ShieldOff, Loader2, Trash2, Users, Send, Copy, Check, Clock, CheckCircle, Mail } from 'lucide-react'
 import type { AppUser } from '@/types/database'
 
 /** Invite code = base64 JSON with Supabase URL + anon key for a given env */
@@ -20,6 +22,7 @@ function encodeInvite(payload: InvitePayload): string {
 
 export function UsersPage() {
   const { appUser } = useAuth()
+  const { activeEnv } = useEnv()
   const queryClient = useQueryClient()
   const [newEmail, setNewEmail] = useState('')
   const [newName, setNewName] = useState('')
@@ -28,6 +31,8 @@ export function UsersPage() {
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [inviteLink, setInviteLink] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailResult, setEmailResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
@@ -145,6 +150,56 @@ export function UsersPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const sendInviteEmail = async () => {
+    if (!inviteModal || !inviteLink || !inviteCode) return
+    setEmailSending(true)
+    setEmailResult(null)
+    try {
+      const backendUrl = await getBackendUrl()
+      if (!backendUrl) throw new Error('Backend not available')
+
+      const env = inviteModal.env.toUpperCase()
+      const userName = inviteModal.user.name || inviteModal.user.email.split('@')[0]
+      const resp = await fetch(`${backendUrl}/api/email/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: [inviteModal.user.email],
+          subject: `OTS Invite — ${env} Environment`,
+          html_body: `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto">
+            <div style="background:#4f46e5;padding:20px 24px;border-radius:8px 8px 0 0">
+              <h2 style="margin:0;color:#fff;font-size:18px">OTS — Offering Tracking System</h2>
+              <p style="margin:4px 0 0;color:#c7d2fe;font-size:13px">You've been invited to the ${env} environment</p>
+            </div>
+            <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:24px">
+              <p style="margin:0 0 16px;font-size:14px;color:#374151">Hi ${userName},</p>
+              <p style="margin:0 0 16px;font-size:14px;color:#374151">You've been invited to use the OTS offering tracking system. Follow these steps to get started:</p>
+              <ol style="margin:0 0 20px;padding-left:20px;font-size:14px;color:#374151;line-height:1.8">
+                <li>Download OTS from the <a href="${inviteLink}" style="color:#4f46e5">invite page</a></li>
+                <li>Unzip and move OTS.app to Applications</li>
+                <li>Run: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:12px">xattr -rc OTS.app</code></li>
+                <li>Launch OTS and paste this invite code:</li>
+              </ol>
+              <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin:0 0 20px;word-break:break-all;font-family:monospace;font-size:11px;color:#1e293b">${inviteCode}</div>
+              <p style="margin:0 0 8px;font-size:14px;color:#374151">Then sign in with your Google account (<strong>${inviteModal.user.email}</strong>).</p>
+              <p style="margin:16px 0 0;font-size:12px;color:#94a3b8">This invite is for the <strong>${env}</strong> environment.</p>
+            </div>
+          </div>`,
+        }),
+      })
+      const data = await resp.json()
+      if (data.success) {
+        setEmailResult({ ok: true, msg: `Sent to ${inviteModal.user.email}` })
+      } else {
+        setEmailResult({ ok: false, msg: data.error || data.detail || 'Failed to send' })
+      }
+    } catch (err) {
+      setEmailResult({ ok: false, msg: err instanceof Error ? err.message : 'Failed to send' })
+    } finally {
+      setEmailSending(false)
+    }
+  }
+
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
   }
@@ -234,8 +289,8 @@ export function UsersPage() {
                 <div className="flex items-center gap-1">
                   {/* Invite button — show for users who haven't logged in yet */}
                   {!user.last_login && (
-                    <button onClick={() => generateInvite(user, 'prod')}
-                      title="Send invite (prod)"
+                    <button onClick={() => generateInvite(user, activeEnv)}
+                      title={`Send invite (${activeEnv})`}
                       className="flex items-center gap-1 px-2 py-1 rounded text-xs text-primary hover:bg-primary/10 cursor-pointer">
                       <Send className="w-3.5 h-3.5" /> Invite
                     </button>
@@ -299,6 +354,22 @@ export function UsersPage() {
               </div>
             </div>
 
+            {/* Email invite directly */}
+            <div className="border-t border-border pt-4">
+              <div className="flex items-center gap-2">
+                <button onClick={sendInviteEmail} disabled={emailSending}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+                  {emailSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                  Email Invite to {inviteModal.user.email}
+                </button>
+              </div>
+              {emailResult && (
+                <p className={`text-xs mt-2 ${emailResult.ok ? 'text-success' : 'text-destructive'}`}>
+                  {emailResult.msg}
+                </p>
+              )}
+            </div>
+
             {/* Instructions */}
             <div className="rounded-lg bg-background p-3 text-xs text-muted space-y-1">
               <p className="font-medium text-foreground">What the user needs to do:</p>
@@ -309,7 +380,7 @@ export function UsersPage() {
             </div>
 
             <div className="flex justify-end">
-              <button onClick={() => setInviteModal(null)}
+              <button onClick={() => { setInviteModal(null); setEmailResult(null) }}
                 className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted-foreground/10 cursor-pointer">
                 Done
               </button>

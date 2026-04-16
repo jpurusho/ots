@@ -186,6 +186,118 @@ function SectionBreakdown({ sectionKey, section, editing, onUpdate }: SectionBre
   )
 }
 
+function MonthCalendar({ year, month, offerings, onSelectDate, selectedId }: {
+  year: number
+  month: number
+  offerings: Offering[]
+  onSelectDate: (id: number) => void
+  selectedId: number | null
+}) {
+  const firstDay = new Date(year, month, 1)
+  const lastDay = new Date(year, month + 1, 0)
+  const startPad = firstDay.getDay()
+  const totalDays = lastDay.getDate()
+  const today = new Date()
+
+  const parseDate = (d: string | null): Date | null => {
+    if (!d) return null
+    const slash = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (slash) return new Date(+slash[3], +slash[1] - 1, +slash[2])
+    const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3])
+    return null
+  }
+
+  const total = (o: Offering) =>
+    (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
+
+  // Map offerings by date
+  const offeringByDate = new Map<string, Offering>()
+  for (const o of offerings) {
+    const d = parseDate(o.offering_date)
+    if (d) offeringByDate.set(d.toDateString(), o)
+  }
+
+  // Missing Sundays
+  const missingSundays = new Set<string>()
+  for (let d = 1; d <= totalDays; d++) {
+    const date = new Date(year, month, d)
+    if (date.getDay() === 0 && date <= today && !offeringByDate.has(date.toDateString())) {
+      missingSundays.add(date.toDateString())
+    }
+  }
+
+  const days: Array<{ day: number; date: Date; isSunday: boolean; offering: Offering | null; isMissing: boolean; isToday: boolean; isFuture: boolean; isSelected: boolean }> = []
+  for (let d = 1; d <= totalDays; d++) {
+    const date = new Date(year, month, d)
+    const key = date.toDateString()
+    const offering = offeringByDate.get(key) || null
+    days.push({
+      day: d,
+      date,
+      isSunday: date.getDay() === 0,
+      offering,
+      isMissing: missingSundays.has(key),
+      isToday: key === today.toDateString(),
+      isFuture: date > today,
+      isSelected: offering?.id === selectedId,
+    })
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="grid grid-cols-7 text-center text-[10px] text-muted font-medium border-b border-border bg-card">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} className={`py-1.5 ${d === 'Sun' ? 'text-primary font-bold' : ''}`}>{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 text-center">
+        {Array.from({ length: startPad }).map((_, i) => (
+          <div key={`pad-${i}`} className="py-2" />
+        ))}
+        {days.map(({ day, isSunday, offering, isMissing, isToday, isFuture, isSelected }) => {
+          const t = offering ? total(offering) : 0
+          return (
+            <div
+              key={day}
+              onClick={() => offering && onSelectDate(offering.id)}
+              className={`py-1.5 px-0.5 text-xs transition-colors relative ${
+                offering ? 'cursor-pointer hover:bg-primary/10' : ''
+              } ${isToday ? 'ring-1 ring-primary ring-inset' : ''} ${
+                isFuture ? 'opacity-30' : ''
+              } ${isSelected ? 'bg-primary/15' : ''}`}
+            >
+              <div className={`${isSunday ? 'font-bold' : ''} ${
+                offering ? 'text-success' : isMissing ? 'text-warning' : isSunday ? 'text-primary' : 'text-muted'
+              }`}>
+                {day}
+              </div>
+              {offering && (
+                <div className={`text-[8px] font-medium truncate ${
+                  offering.status === 'approved' ? 'text-success' : 'text-warning'
+                }`}>
+                  ${t.toFixed(0)}
+                </div>
+              )}
+              {isMissing && (
+                <div className="text-[8px] text-warning">missing</div>
+              )}
+              {isSunday && !offering && !isMissing && !isFuture && (
+                <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mx-auto mt-0.5" />
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex items-center justify-center gap-4 py-1.5 border-t border-border text-[9px] text-muted">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success" /> Approved</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning" /> Pending</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary/30" /> Sunday</span>
+      </div>
+    </div>
+  )
+}
+
 export function ReviewPage() {
   const { appUser } = useAuth()
   const queryClient = useQueryClient()
@@ -572,31 +684,41 @@ export function ReviewPage() {
         <span className="text-[10px] text-muted">{offerings?.length || 0} of {rawOfferings?.length || 0}</span>
       </div>
 
-      {/* Offering list — wrapping grid for many items, horizontal strip for few */}
-      {offerings && offerings.length > 1 && (
-        <div className={offerings.length > 8
-          ? 'flex flex-wrap gap-1'
-          : 'flex gap-1 overflow-x-auto pb-1'
-        }>
-          {offerings.map(o => {
-            const t = (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
-            const dateLabel = o.offering_date
-              ? (o.offering_date.includes('/')
-                ? o.offering_date.replace(/\/\d{4}$/, '') // MM/DD only
-                : o.offering_date.substring(5)) // MM-DD
-              : (o.filename?.substring(0, 8) || '?')
-            return (
-              <button key={o.id} onClick={() => { setSelectedId(o.id); setEditMode(false); resetZoom() }}
-                className={`flex-shrink-0 px-2 py-1 rounded text-[10px] border transition-colors cursor-pointer ${
-                  selected?.id === o.id
-                    ? 'border-primary bg-primary/10 text-primary font-medium'
-                    : 'border-border hover:border-primary/30 text-muted'
-                }`}>
-                {dateLabel}{t > 0 ? ` $${t.toFixed(0)}` : ''}
-              </button>
-            )
-          })}
-        </div>
+      {/* Offering navigator: calendar view when month selected, pills when "All" */}
+      {offerings && offerings.length > 0 && (
+        filterMonth !== null ? (
+          <MonthCalendar
+            year={filterYear}
+            month={filterMonth}
+            offerings={offerings}
+            selectedId={selected?.id ?? null}
+            onSelectDate={(id) => { setSelectedId(id); setEditMode(false); resetZoom() }}
+          />
+        ) : offerings.length > 1 ? (
+          <div className={offerings.length > 8
+            ? 'flex flex-wrap gap-1'
+            : 'flex gap-1 overflow-x-auto pb-1'
+          }>
+            {offerings.map(o => {
+              const t = (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
+              const dateLabel = o.offering_date
+                ? (o.offering_date.includes('/')
+                  ? o.offering_date.replace(/\/\d{4}$/, '') // MM/DD only
+                  : o.offering_date.substring(5)) // MM-DD
+                : (o.filename?.substring(0, 8) || '?')
+              return (
+                <button key={o.id} onClick={() => { setSelectedId(o.id); setEditMode(false); resetZoom() }}
+                  className={`flex-shrink-0 px-2 py-1 rounded text-[10px] border transition-colors cursor-pointer ${
+                    selected?.id === o.id
+                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      : 'border-border hover:border-primary/30 text-muted'
+                  }`}>
+                  {dateLabel}{t > 0 ? ` $${t.toFixed(0)}` : ''}
+                </button>
+              )
+            })}
+          </div>
+        ) : null
       )}
 
       {isLoading && (

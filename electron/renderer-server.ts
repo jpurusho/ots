@@ -49,33 +49,48 @@ export function startRendererServer(rendererDir: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const indexPath = path.join(rendererDir, 'index.html')
 
+    // Read index.html once at startup (reliable with asar, avoids stream issues)
+    const indexHtml = fs.readFileSync(indexPath)
+    console.log(`[Renderer] index.html loaded (${indexHtml.length} bytes) from ${indexPath}`)
+
     server = http.createServer((req, res) => {
-      const url = new URL(req.url || '/', `http://localhost:${PORT}`)
-      const filePath = path.join(rendererDir, url.pathname)
+      try {
+        const url = new URL(req.url || '/', `http://localhost:${PORT}`)
+        const filePath = path.join(rendererDir, url.pathname)
 
-      // OAuth callback from system browser: return "close tab" page,
-      // forward the code to the Electron BrowserWindow
-      if (url.pathname === '/auth/callback' && url.searchParams.has('code')) {
-        console.log('[Renderer] OAuth callback received, forwarding to Electron window')
-        if (onAuthCallback) {
-          onAuthCallback(req.url || '/')
+        // OAuth callback from system browser: return "close tab" page,
+        // forward the code to the Electron BrowserWindow
+        if (url.pathname === '/auth/callback' && url.searchParams.has('code')) {
+          console.log('[Renderer] OAuth callback received, forwarding to Electron window')
+          if (onAuthCallback) {
+            onAuthCallback(req.url || '/')
+          }
+          res.writeHead(200, { 'Content-Type': 'text/html' })
+          res.end(CLOSE_TAB_HTML)
+          return
         }
-        res.writeHead(200, { 'Content-Type': 'text/html' })
-        res.end(CLOSE_TAB_HTML)
-        return
-      }
 
-      // If the path points to a real file, serve it
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-        const ext = path.extname(filePath)
-        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' })
-        fs.createReadStream(filePath).pipe(res)
-        return
-      }
+        // Serve static files (JS, CSS, SVG, etc.)
+        if (url.pathname !== '/' && fs.existsSync(filePath)) {
+          try {
+            const content = fs.readFileSync(filePath)
+            const ext = path.extname(filePath)
+            res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' })
+            res.end(content)
+            return
+          } catch {
+            // Fall through to SPA fallback
+          }
+        }
 
-      // SPA fallback: serve index.html for any route
-      res.writeHead(200, { 'Content-Type': 'text/html' })
-      fs.createReadStream(indexPath).pipe(res)
+        // SPA fallback: serve index.html for any route
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' })
+        res.end(indexHtml)
+      } catch (err) {
+        console.error('[Renderer] Request error:', err)
+        res.writeHead(500, { 'Content-Type': 'text/plain' })
+        res.end('Internal Server Error')
+      }
     })
 
     server.listen(PORT, '127.0.0.1', () => {
