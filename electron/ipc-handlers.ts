@@ -1,12 +1,16 @@
-import { app, ipcMain, shell } from 'electron'
-import { getBackendUrl } from './backend-manager'
-import { loadConfig, saveConfig, hasConfig, getActiveSupabase } from './config-manager'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { getBackendUrl, stopBackend, startBackend } from './backend-manager'
+import { loadConfig, saveConfig, hasConfig, getActiveSupabase, getServiceKey } from './config-manager'
 
 export function registerIpcHandlers(): void {
   // App info
   ipcMain.handle('app:getVersion', () => app.getVersion())
   ipcMain.handle('app:getPlatform', () => process.platform)
   ipcMain.handle('app:openExternal', (_event, url: string) => shell.openExternal(url))
+  ipcMain.handle('app:focus', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) { win.show(); win.focus() }
+  })
 
   // Backend
   ipcMain.handle('backend:getUrl', () => getBackendUrl())
@@ -70,4 +74,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('config:save', (_event, partial: any) => saveConfig(partial))
   ipcMain.handle('config:hasConfig', () => hasConfig())
   ipcMain.handle('config:getActiveSupabase', () => getActiveSupabase())
+
+  // Restart backend with new env credentials
+  ipcMain.handle('backend:restart', async () => {
+    stopBackend()
+    const active = getActiveSupabase()
+    const serviceKey = getServiceKey()
+    const backendEnv: Record<string, string> = {}
+    if (active) backendEnv.SUPABASE_URL = active.url
+    if (serviceKey) backendEnv.SUPABASE_SERVICE_KEY = serviceKey
+    await startBackend(backendEnv)
+    return { url: getBackendUrl() }
+  })
 }

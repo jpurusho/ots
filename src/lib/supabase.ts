@@ -8,7 +8,11 @@ let _client: SupabaseClient | null = null
  */
 export function initSupabase(url: string, anonKey: string): SupabaseClient {
   _client = createClient(url, anonKey, {
-    auth: { storageKey: 'ots-auth' },
+    auth: {
+      storageKey: 'ots-auth',
+      flowType: 'pkce',
+      detectSessionInUrl: true,
+    },
   })
   return _client
 }
@@ -38,7 +42,7 @@ function ensureClient(): SupabaseClient {
     const url = import.meta.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321'
     const key = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
     if (url && key) {
-      _client = createClient(url, key, { auth: { storageKey: 'ots-auth' } })
+      _client = createClient(url, key, { auth: { storageKey: 'ots-auth', flowType: 'pkce', detectSessionInUrl: true } })
     } else {
       throw new Error('Supabase not initialized. Call initSupabase() or set VITE_SUPABASE_URL.')
     }

@@ -58,8 +58,11 @@ export function EnvProvider({ children }: { children: ReactNode }) {
       // Clear all cached queries
       queryClient.clear()
 
-      // Reset backend URL so it reconnects
+      // Restart backend with new env credentials
       resetBackendUrl()
+      if (api.backend.restart) {
+        await api.backend.restart()
+      }
 
       setActiveEnv(env)
 

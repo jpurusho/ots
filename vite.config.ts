@@ -5,8 +5,8 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  // GitHub Pages: /ots/, Electron/local: ./
-  base: process.env.GITHUB_ACTIONS ? '/ots/' : './',
+  // GitHub Pages: /ots/, Electron/local: /
+  base: process.env.GITHUB_ACTIONS ? '/ots/' : '/',
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true,

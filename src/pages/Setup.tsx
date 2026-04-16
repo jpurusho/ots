@@ -1,14 +1,35 @@
 import { useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { getElectronAPI } from '@/lib/electron-compat'
-import { Loader2, CheckCircle, XCircle, ArrowRight, ArrowLeft, Database } from 'lucide-react'
+import { Loader2, CheckCircle, XCircle, ArrowRight, ArrowLeft, Database, KeyRound, Settings2 } from 'lucide-react'
 
 interface StepProps {
   onComplete: () => void
 }
 
+/** Decode an invite code (base64 JSON) */
+function decodeInvite(code: string): { url: string; anonKey: string; env: 'prod' | 'test' } | null {
+  try {
+    const json = JSON.parse(atob(code.trim()))
+    if (json.url && json.anonKey && json.app === 'ots') {
+      return { url: json.url, anonKey: json.anonKey, env: json.env || 'prod' }
+    }
+  } catch { /* invalid code */ }
+  return null
+}
+
 export function SetupPage({ onComplete }: StepProps) {
+  const [mode, setMode] = useState<'choose' | 'invite' | 'manual'>('choose')
   const [step, setStep] = useState(1)
+
+  // Invite code state
+  const [inviteCode, setInviteCode] = useState('')
+  const [inviteSaving, setInviteSaving] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteTesting, setInviteTesting] = useState(false)
+  const [inviteTestResult, setInviteTestResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  // Manual setup state
   const [prodUrl, setProdUrl] = useState('')
   const [prodAnonKey, setProdAnonKey] = useState('')
   const [prodServiceKey, setProdServiceKey] = useState('')
@@ -25,13 +46,10 @@ export function SetupPage({ onComplete }: StepProps) {
     setTestResult(null)
     try {
       const client = createClient(url, key)
-      // Try app_settings first (existing DB), fall back to auth health check (empty DB)
       const { error } = await client.from('app_settings').select('key').limit(1)
       if (error && error.code === 'PGRST204') {
-        // Table doesn't exist — but connection works (empty project)
         setTestResult({ success: true, message: 'Connected! Empty project — schema will be created on first use.' })
       } else if (error && (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.code === 'PGRST205' || error.code === '42P01')) {
-        // Table not found variants — connection is fine
         setTestResult({ success: true, message: 'Connected! Tables not yet created — schema will be applied automatically.' })
       } else if (error) {
         throw error
@@ -40,7 +58,6 @@ export function SetupPage({ onComplete }: StepProps) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Connection failed'
-      // Check if it's a "relation does not exist" error — means connection works but no tables
       if (msg.includes('does not exist') || msg.includes('relation')) {
         setTestResult({ success: true, message: 'Connected! Empty project — schema will be created on first use.' })
       } else {
@@ -51,7 +68,56 @@ export function SetupPage({ onComplete }: StepProps) {
     }
   }
 
-  const handleSave = async () => {
+  const handleInviteSubmit = async () => {
+    const decoded = decodeInvite(inviteCode)
+    if (!decoded) {
+      setInviteError('Invalid invite code. Ask your admin for a new one.')
+      return
+    }
+
+    // Test connection first
+    setInviteTesting(true)
+    setInviteError(null)
+    setInviteTestResult(null)
+    try {
+      const client = createClient(decoded.url, decoded.anonKey)
+      const { error } = await client.from('app_settings').select('key').limit(1)
+      if (error && !['PGRST204', 'PGRST116', 'PGRST205', '42P01'].includes(error.code || '') && !error.message?.includes('does not exist')) {
+        throw error
+      }
+      setInviteTestResult({ success: true, message: 'Connected!' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Connection failed'
+      if (!msg.includes('does not exist') && !msg.includes('relation')) {
+        setInviteError(`Connection failed: ${msg}`)
+        setInviteTesting(false)
+        return
+      }
+    }
+    setInviteTesting(false)
+
+    // Save config
+    setInviteSaving(true)
+    try {
+      const api = getElectronAPI()
+      if (api) {
+        const envKey = decoded.env === 'test' ? 'test' : 'prod'
+        await api.config.save({
+          supabase: {
+            [envKey]: { url: decoded.url, anonKey: decoded.anonKey },
+          },
+          activeEnv: envKey,
+        })
+      }
+      onComplete()
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Failed to save config')
+    } finally {
+      setInviteSaving(false)
+    }
+  }
+
+  const handleManualSave = async () => {
     setSaving(true)
     try {
       const api = getElectronAPI()
@@ -73,6 +139,104 @@ export function SetupPage({ onComplete }: StepProps) {
     }
   }
 
+  // ─── Choose mode ────────────────────────────────────────
+  if (mode === 'choose') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-full max-w-md mx-auto p-8">
+          <div className="text-center mb-8">
+            <Database className="w-12 h-12 mx-auto text-primary mb-3" />
+            <h1 className="text-2xl font-bold">Welcome to OTS</h1>
+            <p className="text-muted text-sm mt-1">How would you like to get started?</p>
+          </div>
+
+          <div className="space-y-3">
+            <button onClick={() => setMode('invite')}
+              className="w-full flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors text-left">
+              <div className="p-2.5 rounded-lg bg-primary/10">
+                <KeyRound className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">I have an invite code</p>
+                <p className="text-xs text-muted mt-0.5">Your admin shared a code or link with you</p>
+              </div>
+            </button>
+
+            <button onClick={() => setMode('manual')}
+              className="w-full flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors text-left">
+              <div className="p-2.5 rounded-lg bg-muted-foreground/10">
+                <Settings2 className="w-5 h-5 text-muted" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Set up manually</p>
+                <p className="text-xs text-muted mt-0.5">Configure database credentials yourself (admin)</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Invite code entry ──────────────────────────────────
+  if (mode === 'invite') {
+    const decoded = inviteCode ? decodeInvite(inviteCode) : null
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-full max-w-md mx-auto p-8">
+          <div className="text-center mb-8">
+            <KeyRound className="w-12 h-12 mx-auto text-primary mb-3" />
+            <h1 className="text-2xl font-bold">Enter Invite Code</h1>
+            <p className="text-muted text-sm mt-1">Paste the code your admin shared with you</p>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+            <div>
+              <label className="text-sm font-medium">Invite Code</label>
+              <textarea placeholder="Paste invite code here..."
+                value={inviteCode} onChange={e => { setInviteCode(e.target.value); setInviteError(null); setInviteTestResult(null) }}
+                rows={3}
+                className="w-full mt-1 px-3 py-2 text-sm font-mono rounded-lg border border-border bg-background resize-none" />
+            </div>
+
+            {decoded && (
+              <div className="rounded-lg bg-background p-3 text-xs space-y-1">
+                <p><strong>Database:</strong> {decoded.url}</p>
+                <p><strong>Environment:</strong> <span className={decoded.env === 'prod' ? 'text-destructive' : 'text-warning'}>{decoded.env.toUpperCase()}</span></p>
+              </div>
+            )}
+
+            {inviteTestResult && (
+              <div className={`flex items-center gap-2 text-sm ${inviteTestResult.success ? 'text-success' : 'text-destructive'}`}>
+                <CheckCircle className="w-4 h-4" /> {inviteTestResult.message}
+              </div>
+            )}
+
+            {inviteError && (
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <XCircle className="w-4 h-4" /> {inviteError}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => { setMode('choose'); setInviteCode(''); setInviteError(null) }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </button>
+              <button onClick={handleInviteSubmit}
+                disabled={!inviteCode.trim() || inviteSaving || inviteTesting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+                {(inviteSaving || inviteTesting) ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                {inviteTesting ? 'Connecting...' : inviteSaving ? 'Saving...' : 'Connect'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Manual setup (admin) ───────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-lg mx-auto p-8">
@@ -92,7 +256,13 @@ export function SetupPage({ onComplete }: StepProps) {
         {/* Step 1: Production DB */}
         {step === 1 && (
           <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-            <h2 className="text-lg font-medium">Production Database</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-medium">Production Database</h2>
+              <button onClick={() => { setMode('choose') }}
+                className="text-xs text-muted hover:text-foreground cursor-pointer">
+                <ArrowLeft className="w-3.5 h-3.5 inline mr-1" />Back to start
+              </button>
+            </div>
             <p className="text-xs text-muted">Enter your Supabase Cloud project credentials. Find them at Settings → API in the Supabase dashboard.</p>
             <div>
               <label className="text-sm font-medium">Project URL</label>
@@ -220,7 +390,7 @@ export function SetupPage({ onComplete }: StepProps) {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
-              <button onClick={handleSave}
+              <button onClick={handleManualSave}
                 disabled={saving || !bootstrapAdmin}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}

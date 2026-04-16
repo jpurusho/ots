@@ -27,10 +27,12 @@ interface ElectronAPI {
     getVersion: () => Promise<string>
     getPlatform: () => Promise<string>
     openExternal: (url: string) => Promise<void>
+    focus: () => Promise<void>
   }
   backend: {
     getUrl: () => Promise<string>
     getStatus: () => Promise<{ status: string; scanner?: string }>
+    restart: () => Promise<{ url: string }>
   }
   config: {
     get: () => Promise<OTSConfig>

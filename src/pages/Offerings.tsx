@@ -104,18 +104,20 @@ export function OfferingsPage() {
         <div className="rounded-xl border border-primary/30 bg-card p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium flex items-center gap-2">
-              <Sparkles className="w-4 h-4" />
-              Uploading & Scanning...
+              <Sparkles className="w-4 h-4 animate-pulse" />
+              {uploadState.currentStep || 'Starting...'}
             </span>
             <span className="text-xs text-muted">{uploadState.current} / {uploadState.total}</span>
           </div>
           <div className="h-1.5 bg-border rounded-full overflow-hidden mb-1">
             <div
               className="h-full bg-primary rounded-full transition-all duration-300"
-              style={{ width: `${(uploadState.current / uploadState.total) * 100}%` }}
+              style={{ width: `${(uploadState.current / Math.max(uploadState.total, 1)) * 100}%` }}
             />
           </div>
-          <p className="text-xs text-muted truncate">{uploadState.currentFile}</p>
+          {uploadState.currentFile && (
+            <p className="text-xs text-muted truncate">{uploadState.currentFile}</p>
+          )}
         </div>
       )}
 

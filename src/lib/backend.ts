@@ -13,8 +13,12 @@ export async function getBackendUrl(): Promise<string> {
 
   const api = getElectronAPI()
   if (api) {
-    cachedUrl = await api.backend.getUrl()
-    return cachedUrl || 'http://localhost:8000'
+    const url = await api.backend.getUrl()
+    if (url) {
+      cachedUrl = url
+      return url
+    }
+    return '' // Backend not ready yet
   }
 
   // Browser fallback

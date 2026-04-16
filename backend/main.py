@@ -28,7 +28,11 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+supabase = None
+if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+else:
+    print("[Backend] WARNING: SUPABASE_SERVICE_KEY not set — scanning, Drive, email, and PDF features will not work")
 
 # ── Claude client ────────────────────────────────────────────────────────────
 
@@ -75,8 +79,11 @@ def get_model_id() -> str:
 async def lifespan(app: FastAPI):
     """Startup: verify connections."""
     print(f"[Backend] Supabase URL: {SUPABASE_URL}")
-    config = _get_ai_config()
-    print(f"[Backend] Using {'Bedrock' if config['use_bedrock'] else 'Anthropic API'}")
+    if supabase:
+        config = _get_ai_config()
+        print(f"[Backend] Using {'Bedrock' if config['use_bedrock'] else 'Anthropic API'}")
+    else:
+        print("[Backend] Running without Supabase — configure service key for full functionality")
     yield
 
 
@@ -84,7 +91,7 @@ app = FastAPI(title="OTS Scanner", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -98,6 +105,8 @@ class ScanRequest(BaseModel):
 
 @app.get("/health")
 async def health():
+    if not supabase:
+        return {"status": "ok", "scanner": "unconfigured"}
     config = _get_ai_config()
     return {"status": "ok", "scanner": "bedrock" if config["use_bedrock"] else "anthropic"}
 
@@ -781,3 +790,20 @@ async def send_email(req: SendEmailRequest):
         return {"success": True, "message": f"Email sent to {len(req.to)} recipients"}
     except Exception as e:
         raise HTTPException(500, f"Failed to send email: {e}")
+
+
+# ── Entry point for PyInstaller binary ──────────────────────────────────────
+if __name__ == "__main__":
+    import sys
+    import uvicorn
+
+    host = "127.0.0.1"
+    port = 8000
+    args = sys.argv[1:]
+    for i, arg in enumerate(args):
+        if arg == "--host" and i + 1 < len(args):
+            host = args[i + 1]
+        elif arg == "--port" and i + 1 < len(args):
+            port = int(args[i + 1])
+
+    uvicorn.run(app, host=host, port=port)

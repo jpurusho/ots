@@ -85,6 +85,9 @@ export interface AppUser {
   role: 'admin' | 'operator'
   is_active: boolean
   last_login: string | null
+  invite_status: 'none' | 'pending' | 'accepted'
+  invited_at: string | null
+  invite_env: 'prod' | 'test' | null
   created_at: string
 }
 

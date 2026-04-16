@@ -2,12 +2,14 @@ import { app, BrowserWindow, Menu, nativeTheme, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import * as path from 'path'
 import { startBackend, stopBackend } from './backend-manager'
+import { startRendererServer, stopRendererServer, setAuthCallbackHandler } from './renderer-server'
 import { registerIpcHandlers } from './ipc-handlers'
 import { loadConfig, getServiceKey, getActiveSupabase } from './config-manager'
 
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
+let rendererPort = 0
 
 function createWindow(): void {
   nativeTheme.themeSource = 'dark'
@@ -35,7 +37,7 @@ function createWindow(): void {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+    mainWindow.loadURL(`http://localhost:${rendererPort}`)
   }
 
   mainWindow.once('ready-to-show', () => {
@@ -149,23 +151,47 @@ app.whenReady().then(async () => {
   registerIpcHandlers()
   createMenu()
 
-  // Start Python backend with Supabase config from config file
+  // In production, serve renderer via local HTTP server (avoids file:// issues)
+  if (!isDev) {
+    const rendererDir = path.join(__dirname, '../../renderer')
+    rendererPort = await startRendererServer(rendererDir)
+
+    // When system browser redirects to /auth/callback?code=xxx,
+    // forward the code to the Electron window via executeJavaScript.
+    // This avoids a full page navigation — the Supabase client in the
+    // Electron window has the PKCE code_verifier in its localStorage.
+    setAuthCallbackHandler((callbackUrl) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const parsed = new URL(callbackUrl, `http://localhost:${rendererPort}`)
+        const code = parsed.searchParams.get('code')
+        if (code) {
+          console.log('[Auth] Received OAuth code, exchanging in Electron window')
+          mainWindow.webContents.executeJavaScript(`
+            window.__otsAuthCode = ${JSON.stringify(code)};
+            window.dispatchEvent(new CustomEvent('ots-auth-callback', { detail: { code: ${JSON.stringify(code)} } }));
+          `)
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      }
+    })
+  }
+
+  createWindow()
+
+  // Start Python backend in background
   try {
     const active = getActiveSupabase()
     const serviceKey = getServiceKey()
     const backendEnv: Record<string, string> = {}
-    if (active) {
-      backendEnv.SUPABASE_URL = active.url
-    }
-    if (serviceKey) {
-      backendEnv.SUPABASE_SERVICE_KEY = serviceKey
-    }
-    await startBackend(backendEnv)
+    if (active) backendEnv.SUPABASE_URL = active.url
+    if (serviceKey) backendEnv.SUPABASE_SERVICE_KEY = serviceKey
+    startBackend(backendEnv).catch(err => {
+      console.error('[App] Backend failed to start:', err)
+    })
   } catch (err) {
-    console.error('[App] Backend failed to start:', err)
+    console.error('[App] Backend config error:', err)
   }
-
-  createWindow()
 
   // Auto-update check (production only)
   if (!isDev) {
@@ -181,6 +207,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   stopBackend()
+  stopRendererServer()
 })
 
 app.on('window-all-closed', () => {

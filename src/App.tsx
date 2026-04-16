@@ -16,9 +16,11 @@ import { SettingsPage } from '@/pages/Settings'
 import { UsersPage } from '@/pages/Users'
 import { ActivityPage } from '@/pages/Activity'
 import { ChecksPage } from '@/pages/Checks'
+import { InvitePage } from '@/pages/Invite'
+import { AuthCallbackPage } from '@/pages/AuthCallback'
 import { Loader2, ShieldX } from 'lucide-react'
 import { isElectron, getElectronAPI } from '@/lib/electron-compat'
-import { initSupabase } from '@/lib/supabase'
+import { supabase, initSupabase } from '@/lib/supabase'
 import { EnvProvider } from '@/lib/env-context'
 import { ThemeProvider } from '@/lib/theme-context'
 
@@ -34,7 +36,8 @@ const queryClient = new QueryClient({
 function AuthGate() {
   const { session, appUser, loading } = useAuth()
 
-  if (loading) {
+  // Still initializing or loading user profile
+  if (loading || (session && appUser === undefined)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -57,7 +60,7 @@ function AuthGate() {
             Your account ({session.user.email}) is not authorized to use this system.
             Contact your administrator to request access.
           </p>
-          <button onClick={() => { import('@/lib/supabase').then(m => m.supabase.auth.signOut()) }}
+          <button onClick={() => { supabase.auth.signOut().then(() => window.location.reload()) }}
             className="mt-4 px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
             Sign Out
           </button>
@@ -147,8 +150,12 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <EnvProvider>
           <AuthProvider>
-            <BrowserRouter basename={import.meta.env.BASE_URL}>
-              <AuthGate />
+            <BrowserRouter basename={isElectron ? '/' : import.meta.env.BASE_URL}>
+              <Routes>
+                <Route path="invite" element={<InvitePage />} />
+                <Route path="auth/callback" element={<AuthCallbackPage />} />
+                <Route path="*" element={<AuthGate />} />
+              </Routes>
             </BrowserRouter>
           </AuthProvider>
         </EnvProvider>

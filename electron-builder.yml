@@ -18,12 +18,15 @@ files:
   - "!scripts/**"
   - "!docs/**"
 
+extraResources:
+  - from: backend/dist/ots-backend
+    to: ots-backend
+
 mac:
   category: public.app-category.productivity
   icon: resources/icon.icns
   target:
     - target: zip
-      arch: [universal]
   darkModeSupport: true
   identity: null
   entitlements: resources/entitlements.mac.plist

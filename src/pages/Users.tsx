@@ -2,8 +2,21 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
-import { UserPlus, Shield, ShieldOff, Loader2, Trash2, Users } from 'lucide-react'
+import { isElectron, getElectronAPI } from '@/lib/electron-compat'
+import { UserPlus, Shield, ShieldOff, Loader2, Trash2, Users, Send, Copy, Check, Clock, CheckCircle } from 'lucide-react'
 import type { AppUser } from '@/types/database'
+
+/** Invite code = base64 JSON with Supabase URL + anon key for a given env */
+interface InvitePayload {
+  url: string
+  anonKey: string
+  env: 'prod' | 'test'
+  app: 'ots'
+}
+
+function encodeInvite(payload: InvitePayload): string {
+  return btoa(JSON.stringify(payload))
+}
 
 export function UsersPage() {
   const { appUser } = useAuth()
@@ -11,6 +24,10 @@ export function UsersPage() {
   const [newEmail, setNewEmail] = useState('')
   const [newName, setNewName] = useState('')
   const [newRole, setNewRole] = useState<'operator' | 'admin'>('operator')
+  const [inviteModal, setInviteModal] = useState<{ user: AppUser; env: 'prod' | 'test' } | null>(null)
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
@@ -76,6 +93,58 @@ export function UsersPage() {
     addUserMutation.mutate({ email: newEmail.trim(), name: newName.trim(), role: newRole })
   }
 
+  const generateInvite = async (user: AppUser, env: 'prod' | 'test') => {
+    let url = ''
+    let anonKey = ''
+
+    if (isElectron) {
+      // Read from Electron config
+      const api = getElectronAPI()
+      if (api) {
+        const config = await api.config.get()
+        const envConfig = config?.supabase?.[env]
+        if (envConfig) {
+          url = envConfig.url
+          anonKey = envConfig.anonKey
+        }
+      }
+    } else {
+      // Browser mode — use current env vars
+      url = import.meta.env.VITE_SUPABASE_URL || ''
+      anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    }
+
+    if (!url || !anonKey) {
+      alert(`No ${env} database configured`)
+      return
+    }
+
+    const code = encodeInvite({ url, anonKey, env, app: 'ots' })
+    const link = `https://jpurusho.github.io/ots/invite#${code}`
+
+    // Mark user as invited
+    await supabase
+      .from('app_users')
+      .update({
+        invite_status: 'pending',
+        invited_at: new Date().toISOString(),
+        invite_env: env,
+      })
+      .eq('id', user.id)
+
+    queryClient.invalidateQueries({ queryKey: ['users'] })
+
+    setInviteCode(code)
+    setInviteLink(link)
+    setInviteModal({ user, env })
+  }
+
+  const copyToClipboard = async (text: string) => {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
   }
@@ -133,8 +202,24 @@ export function UsersPage() {
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user.name || user.email}</p>
-                <p className="text-xs text-muted truncate">{user.email}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium truncate">{user.name || user.email}</p>
+                  {/* Invite status badge */}
+                  {user.invite_status === 'pending' && (
+                    <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-warning/10 text-warning">
+                      <Clock className="w-3 h-3" /> Invited
+                    </span>
+                  )}
+                  {user.invite_status === 'accepted' && (
+                    <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-success/10 text-success">
+                      <CheckCircle className="w-3 h-3" /> Joined
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted truncate">
+                  {user.email}
+                  {user.last_login && <span className="ml-2">Last login: {new Date(user.last_login).toLocaleDateString()}</span>}
+                </p>
               </div>
 
               {/* Role badge */}
@@ -147,6 +232,14 @@ export function UsersPage() {
               {/* Actions (don't allow modifying yourself) */}
               {user.email !== appUser?.email && (
                 <div className="flex items-center gap-1">
+                  {/* Invite button — show for users who haven't logged in yet */}
+                  {!user.last_login && (
+                    <button onClick={() => generateInvite(user, 'prod')}
+                      title="Send invite (prod)"
+                      className="flex items-center gap-1 px-2 py-1 rounded text-xs text-primary hover:bg-primary/10 cursor-pointer">
+                      <Send className="w-3.5 h-3.5" /> Invite
+                    </button>
+                  )}
                   <button onClick={() => toggleRoleMutation.mutate({ id: user.id, role: user.role })}
                     title={user.role === 'admin' ? 'Demote to operator' : 'Promote to admin'}
                     className="p-1.5 rounded hover:bg-muted-foreground/10 cursor-pointer">
@@ -169,6 +262,61 @@ export function UsersPage() {
           ))}
         </div>
       </div>
+
+      {/* Invite modal */}
+      {inviteModal && inviteLink && inviteCode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInviteModal(null)}>
+          <div className="bg-card border border-border rounded-xl p-6 max-w-lg w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold">Invite {inviteModal.user.name || inviteModal.user.email}</h2>
+            <p className="text-sm text-muted">
+              Send this link to the user. It contains the {inviteModal.env.toUpperCase()} database connection — no secrets, just the public URL and anon key.
+            </p>
+
+            {/* Invite link */}
+            <div>
+              <label className="text-xs font-medium text-muted">Invite Link</label>
+              <div className="flex gap-2 mt-1">
+                <input type="text" readOnly value={inviteLink}
+                  className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-border bg-background truncate" />
+                <button onClick={() => copyToClipboard(inviteLink)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 cursor-pointer">
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+
+            {/* Invite code (for manual paste) */}
+            <div>
+              <label className="text-xs font-medium text-muted">Or share just the invite code</label>
+              <div className="flex gap-2 mt-1">
+                <input type="text" readOnly value={inviteCode}
+                  className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-border bg-background truncate" />
+                <button onClick={() => copyToClipboard(inviteCode)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs hover:bg-muted-foreground/10 cursor-pointer">
+                  <Copy className="w-3.5 h-3.5" /> Copy
+                </button>
+              </div>
+            </div>
+
+            {/* Instructions */}
+            <div className="rounded-lg bg-background p-3 text-xs text-muted space-y-1">
+              <p className="font-medium text-foreground">What the user needs to do:</p>
+              <p>1. Open the invite link to see download + setup instructions</p>
+              <p>2. Download and unzip OTS.app</p>
+              <p>3. Run: <code className="px-1 py-0.5 rounded bg-muted-foreground/10">xattr -rc OTS.app</code></p>
+              <p>4. Launch OTS, paste the invite code, and sign in with Google</p>
+            </div>
+
+            <div className="flex justify-end">
+              <button onClick={() => setInviteModal(null)}
+                className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted-foreground/10 cursor-pointer">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

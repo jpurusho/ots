@@ -34,6 +34,9 @@ pyinstaller --onefile \
   --collect-all reportlab \
   main.py 2>&1 | tail -5
 
+# Clean up PyInstaller artifacts that confuse electron-builder
+rm -rf build/ *.spec
+
 echo ""
 echo "Binary: backend/dist/ots-backend"
 ls -lh dist/ots-backend 2>/dev/null || echo "Build failed!"

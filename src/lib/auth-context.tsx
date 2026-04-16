@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { isElectron, getElectronAPI } from '@/lib/electron-compat'
 import type { AppUser } from '@/types/database'
 
 interface AuthState {
   session: Session | null
   user: User | null
-  appUser: AppUser | null
+  appUser: AppUser | null | undefined  // undefined = loading, null = denied
   loading: boolean
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
@@ -16,7 +17,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
-  const [appUser, setAppUser] = useState<AppUser | null>(null)
+  const [appUser, setAppUser] = useState<AppUser | null | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const initialized = useRef(false)
 
@@ -24,63 +25,92 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (initialized.current) return
     initialized.current = true
 
-    // Safety timeout — if auth takes more than 5 seconds, stop loading
-    const timeout = setTimeout(() => {
-      setLoading(false)
-    }, 5000)
-
-    // Listen for auth changes FIRST (catches OAuth redirects)
+    // Listen for auth changes (catches OAuth redirects, session restore, token refresh).
+    // IMPORTANT: onAuthStateChange fires inside Supabase's internal lock.
+    // We must NOT call any Supabase methods (getSession, from().select, etc.) inside
+    // this callback — it will deadlock. Use setTimeout(0) to defer to next microtask.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, s) => {
+      (event, s) => {
         console.log('[Auth] state change:', event, s?.user?.email)
         setSession(s)
         if (s?.user?.email) {
-          await loadAppUser(s.user.email, s)
+          setTimeout(() => loadAppUser(s.user.email!, s), 0)
         } else {
-          setAppUser(null)
+          setAppUser(undefined)
           setLoading(false)
         }
       }
     )
 
-    // Then check for existing session
+    // Check for existing session
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       console.log('[Auth] getSession:', s?.user?.email || 'no session')
       if (s?.user?.email) {
         setSession(s)
         loadAppUser(s.user.email, s)
       } else {
-        // No session — show login
         setLoading(false)
       }
     })
 
+    // Electron: listen for OAuth code forwarded from the renderer server
+    // (system browser hits localhost:48600/auth/callback, server dispatches event here)
+    if (isElectron) {
+      const handleAuthCallback = async (e: Event) => {
+        const code = (e as CustomEvent).detail?.code
+        if (code) {
+          console.log('[Auth] Received OAuth code via event, exchanging...')
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) {
+            console.error('[Auth] Code exchange failed:', error.message)
+          }
+          // onAuthStateChange will fire SIGNED_IN on success
+        }
+      }
+      window.addEventListener('ots-auth-callback', handleAuthCallback)
+      return () => {
+        subscription.unsubscribe()
+        window.removeEventListener('ots-auth-callback', handleAuthCallback)
+      }
+    }
+
     return () => {
-      clearTimeout(timeout)
       subscription.unsubscribe()
     }
   }, [])
 
   async function loadAppUser(email: string, currentSession: Session) {
     try {
+      console.log('[Auth] loadAppUser:', email)
+
       const { data, error } = await supabase
         .from('app_users')
         .select('*')
         .eq('email', email)
-        .single()
+        .maybeSingle()
 
-      if (error && error.code === 'PGRST116') {
-        // User not found in app_users table
-        // Bootstrap admin: only this email auto-creates as admin when no admins exist
-        const BOOTSTRAP_ADMIN = import.meta.env.VITE_BOOTSTRAP_ADMIN || 'jerome.purushotham@gmail.com'
+      if (error) {
+        console.error('[Auth] query app_user error:', error)
+        setAppUser(null)
+        return
+      }
+
+      if (!data) {
+        // User not found — check if bootstrap admin should be auto-created
+        let bootstrapAdmin = import.meta.env.VITE_BOOTSTRAP_ADMIN || 'jerome.purushotham@gmail.com'
+        if (isElectron) {
+          try {
+            const config = await getElectronAPI()?.config.get()
+            if (config?.bootstrapAdmin) bootstrapAdmin = config.bootstrapAdmin
+          } catch { /* use fallback */ }
+        }
 
         const { count } = await supabase
           .from('app_users')
           .select('*', { count: 'exact', head: true })
           .eq('role', 'admin')
 
-        if (count === 0 && email === BOOTSTRAP_ADMIN) {
-          // No admins exist and this is the bootstrap admin — create as admin
+        if ((count ?? 0) === 0 && email === bootstrapAdmin) {
           const user = currentSession.user
           const { data: newUser, error: insertError } = await supabase
             .from('app_users')
@@ -97,56 +127,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .single()
 
           if (insertError) {
-            console.error('[Auth] insert bootstrap admin failed:', insertError)
+            console.error('[Auth] bootstrap admin insert failed:', insertError)
+            setAppUser(null)
           } else {
             setAppUser(newUser)
           }
         } else {
-          // Not the bootstrap admin or admins already exist — access denied
           console.log('[Auth] User not authorized:', email)
           setAppUser(null)
         }
-      } else if (error) {
-        console.error('[Auth] query app_user failed:', error)
-        setAppUser(null)
-      } else if (data) {
-        // Check if account is active
-        if (!data.is_active) {
-          console.log('[Auth] User deactivated:', email)
-          setAppUser(null) // null = not authorized
-          return
-        }
-        setAppUser(data)
-        // Update last_login in background
-        supabase
-          .from('app_users')
-          .update({
-            auth_id: data.auth_id || currentSession.user.id,
-            last_login: new Date().toISOString(),
-          })
-          .eq('email', email)
-          .then(() => {})
+        return
       }
+
+      // User found
+      if (!data.is_active) {
+        console.log('[Auth] User deactivated:', email)
+        setAppUser(null)
+        return
+      }
+
+      console.log('[Auth] User authorized:', data.email, data.role)
+      setAppUser(data)
+
+      // Update last_login in background
+      const updates: Record<string, unknown> = {
+        auth_id: data.auth_id || currentSession.user.id,
+        name: data.name || currentSession.user.user_metadata?.full_name || currentSession.user.user_metadata?.name || email.split('@')[0],
+        picture: currentSession.user.user_metadata?.avatar_url || data.picture || null,
+        last_login: new Date().toISOString(),
+      }
+      if (data.invite_status === 'pending') {
+        updates.invite_status = 'accepted'
+      }
+      supabase.from('app_users').update(updates).eq('email', email).then(() => {})
     } catch (err) {
       console.error('[Auth] loadAppUser error:', err)
+      setAppUser(null)
     } finally {
       setLoading(false)
     }
   }
 
   async function signInWithGoogle() {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + import.meta.env.BASE_URL,
-      },
-    })
-    if (error) throw error
+    const callbackPath = '/auth/callback'
+
+    if (isElectron) {
+      // Electron: open auth in system browser (has saved Google sessions).
+      // PKCE code_verifier is stored in localhost localStorage.
+      // Callback redirects back to localhost:48600/auth/callback.
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          skipBrowserRedirect: true,
+          redirectTo: window.location.origin + callbackPath,
+        },
+      })
+      if (error) throw error
+      if (data.url) {
+        const api = getElectronAPI()
+        await api?.app.openExternal(data.url)
+      }
+    } else {
+      // Browser: standard redirect flow (stays in same window)
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + import.meta.env.BASE_URL + 'auth/callback',
+        },
+      })
+      if (error) throw error
+    }
   }
 
   async function signOut() {
     await supabase.auth.signOut()
-    setAppUser(null)
+    setAppUser(undefined)
     setSession(null)
   }
 

@@ -5,10 +5,12 @@ const api = {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+    focus: () => ipcRenderer.invoke('app:focus'),
   },
   backend: {
     getUrl: () => ipcRenderer.invoke('backend:getUrl'),
     getStatus: () => ipcRenderer.invoke('backend:getStatus'),
+    restart: () => ipcRenderer.invoke('backend:restart'),
   },
   update: {
     check: () => ipcRenderer.invoke('app:checkForUpdates'),

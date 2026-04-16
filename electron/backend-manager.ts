@@ -30,7 +30,7 @@ function findAvailablePort(): Promise<number> {
 /**
  * Poll the backend health endpoint until it responds
  */
-function waitForHealth(port: number, maxRetries: number = 30): Promise<boolean> {
+function waitForHealth(port: number, maxRetries: number = 60): Promise<boolean> {
   return new Promise((resolve) => {
     let retries = 0
     const check = () => {
