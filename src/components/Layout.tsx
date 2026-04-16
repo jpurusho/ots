@@ -34,11 +34,13 @@ export function Layout() {
     <div className="min-h-screen flex">
       {/* Sidebar */}
       <aside className="w-56 border-r border-border bg-card flex flex-col">
-        <div className="p-4 border-b border-border">
+        {/* Draggable title bar region (Electron window drag) */}
+        {isElectron && <div className="h-8 flex-shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />}
+        <div className={`px-4 ${isElectron ? 'pb-4' : 'p-4'} border-b border-border`}>
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-bold">OTS</h1>
-              <p className="text-xs text-muted">v2.2.0</p>
+              <p className="text-xs text-muted">v3.1.2</p>
             </div>
             {isElectron && hasTestDb && (
               <div className="flex flex-col items-end gap-0.5">
@@ -166,8 +168,11 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 p-6 overflow-auto">
-        <Outlet />
+      <main className="flex-1 overflow-auto relative">
+        {isElectron && <div className="h-8 w-full" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />}
+        <div className={`${isElectron ? 'px-6 pb-6' : 'p-6'}`}>
+          <Outlet />
+        </div>
       </main>
     </div>
   )

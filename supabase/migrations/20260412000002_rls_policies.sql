@@ -29,13 +29,15 @@ CREATE POLICY "Authenticated users can update checks"
 CREATE POLICY "Authenticated users can delete checks"
   ON offering_checks FOR DELETE TO authenticated USING (true);
 
--- App users: all authenticated can read, only admins can modify
+-- App users: all authenticated can read and modify
 CREATE POLICY "Authenticated users can read app_users"
   ON app_users FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Authenticated users can insert app_users"
   ON app_users FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Authenticated users can update app_users"
   ON app_users FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "Authenticated users can delete app_users"
+  ON app_users FOR DELETE TO authenticated USING (true);
 
 -- App settings: all authenticated can read, only admins can modify
 CREATE POLICY "Authenticated users can read settings"

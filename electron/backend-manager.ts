@@ -81,6 +81,9 @@ export async function startBackend(env?: Record<string, string>): Promise<number
   const spawnEnv: Record<string, string> = {
     ...(process.env as Record<string, string>),
     PYTHONUNBUFFERED: '1',
+    // pyiceberg (transitive dep of storage3) needs a valid HOME and config dir
+    PYICEBERG_HOME: app.getPath('temp'),
+    HOME: process.env.HOME || app.getPath('home'),
     ...(env || {}),
   }
 
