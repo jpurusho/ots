@@ -8,10 +8,11 @@ import { getBackendUrl } from '@/lib/backend'
 import { UserPlus, Shield, ShieldOff, Loader2, Trash2, Users, Send, Copy, Check, Clock, CheckCircle, Mail } from 'lucide-react'
 import type { AppUser } from '@/types/database'
 
-/** Invite code = base64 JSON with Supabase URL + anon key for a given env */
+/** Invite code = base64 JSON with Supabase credentials for a given env */
 interface InvitePayload {
   url: string
   anonKey: string
+  serviceKey?: string
   env: 'prod' | 'test'
   app: 'ots'
 }
@@ -101,9 +102,9 @@ export function UsersPage() {
   const generateInvite = async (user: AppUser, env: 'prod' | 'test') => {
     let url = ''
     let anonKey = ''
+    let serviceKey = ''
 
     if (isElectron) {
-      // Read from Electron config
       const api = getElectronAPI()
       if (api) {
         const config = await api.config.get()
@@ -111,10 +112,10 @@ export function UsersPage() {
         if (envConfig) {
           url = envConfig.url
           anonKey = envConfig.anonKey
+          serviceKey = envConfig.serviceKey || ''
         }
       }
     } else {
-      // Browser mode — use current env vars
       url = import.meta.env.VITE_SUPABASE_URL || ''
       anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
     }
@@ -124,7 +125,9 @@ export function UsersPage() {
       return
     }
 
-    const code = encodeInvite({ url, anonKey, env, app: 'ots' })
+    const payload: InvitePayload = { url, anonKey, env, app: 'ots' }
+    if (serviceKey) payload.serviceKey = serviceKey
+    const code = encodeInvite(payload)
     const link = `https://jpurusho.github.io/ots/invite#${code}`
 
     // Mark user as invited

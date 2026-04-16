@@ -8,11 +8,11 @@ interface StepProps {
 }
 
 /** Decode an invite code (base64 JSON) */
-function decodeInvite(code: string): { url: string; anonKey: string; env: 'prod' | 'test' } | null {
+function decodeInvite(code: string): { url: string; anonKey: string; serviceKey?: string; env: 'prod' | 'test' } | null {
   try {
     const json = JSON.parse(atob(code.trim()))
     if (json.url && json.anonKey && json.app === 'ots') {
-      return { url: json.url, anonKey: json.anonKey, env: json.env || 'prod' }
+      return { url: json.url, anonKey: json.anonKey, serviceKey: json.serviceKey, env: json.env || 'prod' }
     }
   } catch { /* invalid code */ }
   return null
@@ -102,9 +102,11 @@ export function SetupPage({ onComplete }: StepProps) {
       const api = getElectronAPI()
       if (api) {
         const envKey = decoded.env === 'test' ? 'test' : 'prod'
+        const envConfig: Record<string, string> = { url: decoded.url, anonKey: decoded.anonKey }
+        if (decoded.serviceKey) envConfig.serviceKey = decoded.serviceKey
         await api.config.save({
           supabase: {
-            [envKey]: { url: decoded.url, anonKey: decoded.anonKey },
+            [envKey]: envConfig,
           },
           activeEnv: envKey,
         })
