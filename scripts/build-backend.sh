@@ -24,6 +24,7 @@ pip install -q pyinstaller
 echo "Running PyInstaller..."
 pyinstaller --onefile \
   --name ots-backend \
+  --runtime-hook pyinstaller-hooks/rthook_pyiceberg.py \
   --hidden-import uvicorn.logging \
   --hidden-import uvicorn.lifespan.on \
   --hidden-import uvicorn.lifespan.off \
