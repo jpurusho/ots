@@ -9,6 +9,7 @@ import {
   CalendarRange, CloudUpload, Mail,
 } from 'lucide-react'
 import { generateAndDownloadPdf } from '@/lib/pdf-utils'
+import { useAccentColors } from '@/lib/accent-colors'
 
 
 interface ApprovedOffering {
@@ -64,7 +65,7 @@ const rowTotal = (o: ApprovedOffering) =>
 
 // Open HTML in new window (no auto-print — user can Cmd+P when ready)
 // Email-safe card using tables instead of flexbox (Gmail/Outlook compatible)
-function buildEmailCard(churchName: string, o: ApprovedOffering): string {
+function buildEmailCard(churchName: string, o: ApprovedOffering, accent = '#4f46e5'): string {
   const t = rowTotal(o)
   const row = (label: string, amount: number) =>
     '<tr><td style="padding:8px 20px;font-size:14px;color:#374151;border-bottom:1px solid #f1f5f9">' + label + '</td>' +
@@ -79,16 +80,16 @@ function buildEmailCard(churchName: string, o: ApprovedOffering): string {
 
   return '<div style="max-width:420px;margin:0 auto;font-family:system-ui,-apple-system,sans-serif">' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">' +
-      '<tr><td style="background:#4f46e5;padding:16px 20px">' +
+      '<tr><td style="background:' + accent + ';padding:16px 20px">' +
         '<p style="margin:0;font-size:16px;font-weight:600;color:#ffffff">' + churchName + '</p>' +
-        '<p style="margin:4px 0 0;font-size:12px;color:#c7d2fe">Week of ' + formatDate(o.offering_date) + '</p>' +
+        '<p style="margin:4px 0 0;font-size:12px;color:rgba(255,255,255,0.8)">Week of ' + formatDate(o.offering_date) + '</p>' +
       '</td></tr>' +
       '<tr><td style="padding:0">' +
         '<table width="100%" cellpadding="0" cellspacing="0">' +
           rows +
-          '<tr style="border-top:2px solid #4f46e5">' +
-            '<td style="padding:12px 20px;font-size:16px;font-weight:bold;color:#4f46e5">Total</td>' +
-            '<td style="padding:12px 20px;font-size:16px;font-weight:bold;color:#4f46e5;text-align:right">$' + t.toFixed(2) + '</td>' +
+          '<tr style="border-top:2px solid ' + accent + '">' +
+            '<td style="padding:12px 20px;font-size:16px;font-weight:bold;color:' + accent + '">Total</td>' +
+            '<td style="padding:12px 20px;font-size:16px;font-weight:bold;color:' + accent + ';text-align:right">$' + t.toFixed(2) + '</td>' +
           '</tr>' +
         '</table>' +
       '</td></tr>' +
@@ -246,6 +247,8 @@ export function ReportsPage() {
     },
   })
 
+  const accentColors = useAccentColors()
+
   const { data: allApproved, isLoading } = useQuery({
     queryKey: ['offerings', 'approved'],
     queryFn: async () => {
@@ -382,7 +385,7 @@ export function ReportsPage() {
         headers: ['Date', 'General', 'Cash', 'Sunday School', 'Building Fund', 'Misc', 'Total'],
         rows: offerings.map(o => [formatDate(o.offering_date), fmt(o.general), fmt(o.cash), fmt(o.sunday_school), fmt(o.building_fund), fmt(o.misc), '$' + rowTotal(o).toFixed(2)]),
         footer_row: ['Total', '$' + grandTotal.general.toFixed(2), '$' + grandTotal.cash.toFixed(2), '$' + grandTotal.sunday_school.toFixed(2), '$' + grandTotal.building_fund.toFixed(2), '$' + grandTotal.misc.toFixed(2), '$' + grandTotalSum.toFixed(2)],
-        accent_color: '#16a34a',
+        accent_color: accentColors.report || '#16a34a',
         filename: 'ots_report_' + periodLabel.replace(/\s+/g, '_').toLowerCase() + '_' + today + '.pdf',
       })
     } catch (err) { alert(err instanceof Error ? err.message : 'PDF failed') }
@@ -416,6 +419,7 @@ export function ReportsPage() {
   }
 
   const buildEmailReportHtml = () => {
+    const rc = accentColors.report || '#16a34a'
     const thStyle = 'padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1'
     const tdStyle = 'padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb'
     const ftStyle = 'padding:10px 12px;text-align:right;font-weight:bold'
@@ -427,13 +431,13 @@ export function ReportsPage() {
         '<td style="' + tdStyle + '">' + fmt(o.misc) + '</td><td style="' + tdStyle + ';font-weight:bold">$' + rowTotal(o).toFixed(2) + '</td></tr>'
     }).join('')
     return '<div style="font-family:system-ui,sans-serif;max-width:700px;margin:0 auto;color:#1a1a2e">' +
-      '<div style="background:#4f46e5;color:white;padding:20px 24px;border-radius:8px 8px 0 0"><h1 style="margin:0;font-size:18px">' + title + '</h1><p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + '</p></div>' +
+      '<div style="background:' + rc + ';color:white;padding:20px 24px;border-radius:8px 8px 0 0"><h1 style="margin:0;font-size:18px">' + title + '</h1><p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + '</p></div>' +
       '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">' +
       '<table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">' +
       '<colgroup><col style="width:22%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/></colgroup>' +
       '<thead><tr style="background:#f1f5f9">' +
       '<th style="' + thStyle + ';text-align:left">Date</th><th style="' + thStyle + '">General</th><th style="' + thStyle + '">Cash</th><th style="' + thStyle + '">Sunday School</th><th style="' + thStyle + '">Building Fund</th><th style="' + thStyle + '">Misc</th><th style="' + thStyle + '">Total</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody><tfoot><tr style="background:#4f46e5;color:white">' +
+      '</tr></thead><tbody>' + rows + '</tbody><tfoot><tr style="background:' + rc + ';color:white">' +
       '<td style="' + ftStyle + ';text-align:left">Total</td><td style="' + ftStyle + '">$' + grandTotal.general.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.cash.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.sunday_school.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.building_fund.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.misc.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotalSum.toFixed(2) + '</td>' +
       '</tr></tfoot></table></div><p style="margin-top:16px;font-size:10px;color:#94a3b8;text-align:center">Generated by OTS</p></div>'
   }
@@ -609,18 +613,19 @@ export function ReportsPage() {
               </button>
               <button onClick={async () => {
                   // Build full styled HTML document for PDF conversion
+                  const rc = accentColors.report || '#16a34a'
                   const tableHtml = buildReportTable(offerings, grandTotal, grandTotalSum)
                   const fullHtml = '<!DOCTYPE html><html><head><style>' +
                     'body{font-family:system-ui,sans-serif;margin:30px;color:#1a1a2e}' +
-                    'h1{font-size:18px;margin:0 0 4px;color:#4f46e5}' +
+                    'h1{font-size:18px;margin:0 0 4px;color:' + rc + '}' +
                     'h2{font-size:13px;color:#64748b;font-weight:normal;margin:0 0 20px}' +
                     'table{width:100%;border-collapse:collapse;font-size:12px}' +
-                    'th{padding:8px 10px;text-align:right;font-size:10px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #4f46e5;background:#f1f5f9}' +
+                    'th{padding:8px 10px;text-align:right;font-size:10px;text-transform:uppercase;color:#64748b;border-bottom:2px solid ' + rc + ';background:#f1f5f9}' +
                     'th:first-child{text-align:left}' +
                     'td{padding:6px 10px;text-align:right;border-bottom:1px solid #e5e7eb}' +
                     'td:first-child{text-align:left}' +
                     'tr:nth-child(even){background:#f8fafc}' +
-                    'tfoot tr{background:#4f46e5;color:white}' +
+                    'tfoot tr{background:' + rc + ';color:white}' +
                     'tfoot td{font-weight:bold;border:none;padding:8px 10px}' +
                     '.footer{margin-top:20px;font-size:9px;color:#94a3b8}' +
                     '</style></head><body>' +
@@ -671,7 +676,7 @@ export function ReportsPage() {
                     if (emailTarget.type === 'report') {
                       sendEmail(title + ' — ' + periodLabel, buildEmailReportHtml())
                     } else if (o) {
-                      sendEmail(title + ' — Week of ' + formatDate(o.offering_date), buildEmailCard(title, o))
+                      sendEmail(title + ' — Week of ' + formatDate(o.offering_date), buildEmailCard(title, o, accentColors.card))
                     }
                   }}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">

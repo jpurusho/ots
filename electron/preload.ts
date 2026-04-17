@@ -14,15 +14,16 @@ const api = {
   },
   update: {
     check: () => ipcRenderer.invoke('app:checkForUpdates'),
+    download: (url: string) => ipcRenderer.invoke('app:downloadUpdate', url),
     onUpdateAvailable: (cb: (version: string) => void) => {
       const handler = (_e: any, v: string) => cb(v)
       ipcRenderer.on('app:updateAvailable', handler)
       return () => ipcRenderer.removeListener('app:updateAvailable', handler)
     },
-    onUpdateReady: (cb: (version: string) => void) => {
-      const handler = (_e: any, v: string) => cb(v)
-      ipcRenderer.on('app:updateReady', handler)
-      return () => ipcRenderer.removeListener('app:updateReady', handler)
+    onDownloadProgress: (cb: (progress: { downloaded: number; total: number; percent: number }) => void) => {
+      const handler = (_e: any, p: any) => cb(p)
+      ipcRenderer.on('app:downloadProgress', handler)
+      return () => ipcRenderer.removeListener('app:downloadProgress', handler)
     },
   },
   config: {

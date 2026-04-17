@@ -1,5 +1,4 @@
 import { app, BrowserWindow, Menu, nativeTheme, shell } from 'electron'
-import { autoUpdater } from 'electron-updater'
 import * as path from 'path'
 import { startBackend, stopBackend } from './backend-manager'
 import { startRendererServer, stopRendererServer, setAuthCallbackHandler } from './renderer-server'
@@ -110,39 +109,40 @@ function createMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-function setupAutoUpdater(): void {
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'jpurusho',
-    repo: 'ots',
-  })
-
-  autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
-
-  autoUpdater.on('update-available', (info) => {
-    console.log(`[Update] New version available: ${info.version}`)
-    const win = BrowserWindow.getAllWindows()[0]
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('app:updateAvailable', info.version)
+/** Check for updates via GitHub API on launch, notify renderer if available */
+async function checkForUpdatesOnLaunch(): Promise<void> {
+  try {
+    const https = await import('https')
+    const release: any = await new Promise((resolve, reject) => {
+      https.get({
+        hostname: 'api.github.com',
+        path: '/repos/jpurusho/ots/releases/latest',
+        headers: { 'User-Agent': 'ots-updater' },
+      }, (res: any) => {
+        let data = ''
+        res.on('data', (chunk: string) => { data += chunk })
+        res.on('end', () => {
+          if (res.statusCode === 200) resolve(JSON.parse(data))
+          else reject(new Error(`HTTP ${res.statusCode}`))
+        })
+      }).on('error', reject)
+    })
+    const latestVersion = release.tag_name?.replace(/^v/, '') || ''
+    const current = app.getVersion().split('.').map(Number)
+    const latest = latestVersion.split('.').map(Number)
+    const isNewer = latest[0] > current[0]
+      || (latest[0] === current[0] && latest[1] > current[1])
+      || (latest[0] === current[0] && latest[1] === current[1] && latest[2] > current[2])
+    if (isNewer) {
+      console.log(`[Update] New version available: ${latestVersion}`)
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('app:updateAvailable', latestVersion)
+      }
     }
-  })
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log(`[Update] Downloaded: ${info.version}`)
-    const win = BrowserWindow.getAllWindows()[0]
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('app:updateReady', info.version)
-    }
-  })
-
-  autoUpdater.on('error', (err) => {
-    console.error('[Update] Error:', err?.message)
-  })
-
-  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+  } catch (err: any) {
     console.error('[Update] Check failed:', err?.message)
-  })
+  }
 }
 
 app.setName('OTS')
@@ -193,9 +193,9 @@ app.whenReady().then(async () => {
     console.error('[App] Backend config error:', err)
   }
 
-  // Auto-update check (production only)
+  // Check for updates (production only)
   if (!isDev) {
-    setupAutoUpdater()
+    checkForUpdatesOnLaunch()
   }
 
   app.on('activate', () => {

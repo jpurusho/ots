@@ -2,9 +2,11 @@ import { getBackendUrl } from '@/lib/backend'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Sun, Moon, Monitor } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Sun, Moon, Monitor, Download, RefreshCw } from 'lucide-react'
 import { DriveFolderPicker } from '@/components/DriveFolderPicker'
 import { useTheme } from '@/lib/theme-context'
+import { isElectron, getElectronAPI } from '@/lib/electron-compat'
+import { useAccentColors } from '@/lib/accent-colors'
 
 
 interface Setting {
@@ -396,32 +398,51 @@ export function SettingsPage() {
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-          <div>
-            <p className="text-sm text-muted">Version</p>
-            <p className="text-lg font-bold">2.0.0</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted">Architecture</p>
-            <p className="text-sm">Supabase (PostgreSQL + Auth + Storage) + React + TanStack Query</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted">AI Scanner</p>
-            <p className="text-sm">Claude via {formValues['use_bedrock'] === 'true' ? 'AWS Bedrock' : 'Anthropic API'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted">Previous Version</p>
-            <a href="https://github.com/jpurusho/ots-v0" target="_blank" rel="noreferrer"
-              className="text-sm text-primary hover:underline">github.com/jpurusho/ots-v0</a>
-          </div>
-        </div>
+        <AboutTab scannerMode={formValues['use_bedrock'] === 'true' ? 'AWS Bedrock' : 'Anthropic API'} />
       )}
+    </div>
+  )
+}
+
+const COLOR_PRESETS = [
+  { value: '#16a34a', label: 'Green' },
+  { value: '#4f46e5', label: 'Purple' },
+  { value: '#2563eb', label: 'Blue' },
+  { value: '#dc2626', label: 'Red' },
+  { value: '#0891b2', label: 'Teal' },
+  { value: '#d97706', label: 'Amber' },
+  { value: '#7c3aed', label: 'Violet' },
+  { value: '#0d9488', label: 'Emerald' },
+]
+
+function ColorPicker({ label, description, value, onChange }: {
+  label: string; description: string; value: string; onChange: (v: string) => void
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium mb-1">{label}</p>
+      <p className="text-[10px] text-muted mb-2">{description}</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        {COLOR_PRESETS.map(p => (
+          <button key={p.value} onClick={() => onChange(p.value)}
+            title={p.label}
+            className={`w-7 h-7 rounded-full border-2 transition-all cursor-pointer ${
+              value === p.value ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'
+            }`}
+            style={{ backgroundColor: p.value }}
+          />
+        ))}
+        <input type="color" value={value} onChange={e => onChange(e.target.value)}
+          className="w-7 h-7 rounded-full border border-border cursor-pointer" title="Custom color" />
+        <span className="text-xs text-muted font-mono ml-1">{value}</span>
+      </div>
     </div>
   )
 }
 
 function ThemesTab() {
   const { theme, setTheme, resolved } = useTheme()
+  const queryClient = useQueryClient()
 
   const options: Array<{ value: 'light' | 'dark' | 'system'; label: string; icon: typeof Sun; desc: string }> = [
     { value: 'light', label: 'Light', icon: Sun, desc: 'Always use light theme' },
@@ -429,25 +450,207 @@ function ThemesTab() {
     { value: 'system', label: 'System', icon: Monitor, desc: 'Follow your OS preference' },
   ]
 
+  const accentColors = useAccentColors()
+
+  const [reportColor, setReportColor] = useState(accentColors.report)
+  const [cardColor, setCardColor] = useState(accentColors.card)
+  const [colorSaved, setColorSaved] = useState(false)
+
+  // Sync local state when DB values load (initial fetch)
+  useEffect(() => {
+    setReportColor(accentColors.report)
+    setCardColor(accentColors.card)
+  }, [accentColors.report, accentColors.card])
+
+  const hasColorChanges = reportColor !== accentColors.report || cardColor !== accentColors.card
+
+  const saveColors = async () => {
+    await supabase.from('app_settings').update({ value: reportColor }).eq('key', 'report_accent_color')
+    await supabase.from('app_settings').update({ value: cardColor }).eq('key', 'card_accent_color')
+    queryClient.invalidateQueries({ queryKey: ['settings'] })
+    setColorSaved(true)
+    setTimeout(() => setColorSaved(false), 2000)
+  }
+
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="p-5">
-        <h3 className="text-sm font-medium mb-4">Appearance</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {options.map(({ value, label, icon: Icon, desc }) => (
-            <button key={value} onClick={() => setTheme(value)}
-              className={`p-4 rounded-xl border-2 text-center transition-colors cursor-pointer ${
-                theme === value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
-              }`}>
-              <Icon className={`w-6 h-6 mx-auto mb-2 ${theme === value ? 'text-primary' : 'text-muted'}`} />
-              <p className="text-sm font-medium">{label}</p>
-              <p className="text-[10px] text-muted mt-1">{desc}</p>
-            </button>
-          ))}
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="p-5">
+          <h3 className="text-sm font-medium mb-4">Appearance</h3>
+          <div className="grid grid-cols-3 gap-3">
+            {options.map(({ value, label, icon: Icon, desc }) => (
+              <button key={value} onClick={() => setTheme(value)}
+                className={`p-4 rounded-xl border-2 text-center transition-colors cursor-pointer ${
+                  theme === value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
+                }`}>
+                <Icon className={`w-6 h-6 mx-auto mb-2 ${theme === value ? 'text-primary' : 'text-muted'}`} />
+                <p className="text-sm font-medium">{label}</p>
+                <p className="text-[10px] text-muted mt-1">{desc}</p>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted mt-4 text-center">
+            Currently using: <strong>{resolved}</strong> theme
+          </p>
         </div>
-        <p className="text-xs text-muted mt-4 text-center">
-          Currently using: <strong>{resolved}</strong> theme
-        </p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="p-5 space-y-5">
+          <h3 className="text-sm font-medium">Report Colors</h3>
+          <ColorPicker
+            label="Monthly Report"
+            description="Header and footer color for offering report PDFs and emails"
+            value={reportColor}
+            onChange={setReportColor}
+          />
+          <ColorPicker
+            label="Weekly Cards & Checks"
+            description="Accent color for weekly cards, check contributions, and year-end PDFs"
+            value={cardColor}
+            onChange={setCardColor}
+          />
+          <div className="flex items-center gap-3 pt-2 border-t border-border">
+            {colorSaved && (
+              <span className="flex items-center gap-1 text-sm text-success">
+                <CheckCircle className="w-4 h-4" /> Saved
+              </span>
+            )}
+            <button onClick={saveColors} disabled={!hasColorChanges}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+              <Save className="w-4 h-4" />
+              {hasColorChanges ? 'Save Colors' : 'Saved'}
+            </button>
+            {/* Preview swatches */}
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-[10px] text-muted">Preview:</span>
+              <div className="flex gap-1">
+                <div className="w-10 h-5 rounded text-[8px] text-white font-bold flex items-center justify-center" style={{ backgroundColor: reportColor }}>RPT</div>
+                <div className="w-10 h-5 rounded text-[8px] text-white font-bold flex items-center justify-center" style={{ backgroundColor: cardColor }}>CARD</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AboutTab({ scannerMode }: { scannerMode: string }) {
+  const [checking, setChecking] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<{ status: string; version?: string; url?: string; notes?: string; message?: string } | null>(null)
+  const [downloading, setDownloading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [downloadResult, setDownloadResult] = useState<{ success: boolean; path?: string } | null>(null)
+  const [appVersion, setAppVersion] = useState('3.2.0')
+
+  useEffect(() => {
+    if (isElectron) {
+      getElectronAPI()?.app.getVersion().then(v => setAppVersion(v))
+      const cleanup = getElectronAPI()?.update?.onDownloadProgress?.((p: { percent: number }) => setProgress(p.percent))
+      return () => { cleanup?.() }
+    }
+  }, [])
+
+  const handleCheck = async () => {
+    setChecking(true)
+    setUpdateInfo(null)
+    setDownloadResult(null)
+    try {
+      const api = getElectronAPI()
+      if (api) {
+        const result = await api.update.check()
+        setUpdateInfo(result)
+      }
+    } catch (err) {
+      setUpdateInfo({ status: 'error', message: err instanceof Error ? err.message : 'Check failed' })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const handleDownload = async () => {
+    if (!updateInfo?.url) return
+    setDownloading(true)
+    setProgress(0)
+    setDownloadResult(null)
+    try {
+      const api = getElectronAPI()
+      if (api) {
+        const zipUrl = updateInfo.url.replace('/releases/tag/', '/releases/download/') + `/OTS-${updateInfo.version}-arm64-mac.zip`
+        const result = await (api.update as any).download(zipUrl)
+        setDownloadResult(result as { success: boolean; path?: string })
+      }
+    } catch {
+      setDownloadResult({ success: false })
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+      <div>
+        <p className="text-sm text-muted">Version</p>
+        <p className="text-lg font-bold">{appVersion}</p>
+      </div>
+      <div>
+        <p className="text-sm text-muted">Architecture</p>
+        <p className="text-sm">Supabase (PostgreSQL + Auth + Storage) + React + TanStack Query</p>
+      </div>
+      <div>
+        <p className="text-sm text-muted">AI Scanner</p>
+        <p className="text-sm">Claude via {scannerMode}</p>
+      </div>
+
+      {isElectron && (
+        <div className="pt-3 border-t border-border space-y-3">
+          <div className="flex items-center gap-3">
+            <button onClick={handleCheck} disabled={checking}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
+              {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Check for Updates
+            </button>
+            {updateInfo?.status === 'latest' && (
+              <span className="text-sm text-success">You're on the latest version</span>
+            )}
+            {updateInfo?.status === 'error' && (
+              <span className="text-sm text-destructive">{updateInfo.message}</span>
+            )}
+          </div>
+
+          {updateInfo?.status === 'available' && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium">v{updateInfo.version} available</p>
+                {updateInfo.notes && (
+                  <p className="text-xs text-muted mt-1 whitespace-pre-wrap max-h-24 overflow-y-auto">{updateInfo.notes}</p>
+                )}
+              </div>
+              {!downloadResult?.success && (
+                <button onClick={handleDownload} disabled={downloading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+                  {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  {downloading ? `Downloading... ${progress}%` : 'Download Update'}
+                </button>
+              )}
+              {downloading && (
+                <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+                </div>
+              )}
+              {downloadResult?.success && (
+                <p className="text-sm text-success">Downloaded to ~/Downloads. Unzip and replace OTS.app.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="pt-3 border-t border-border">
+        <p className="text-sm text-muted">Previous Version</p>
+        <a href="https://github.com/jpurusho/ots-v0" target="_blank" rel="noreferrer"
+          className="text-sm text-primary hover:underline">github.com/jpurusho/ots-v0</a>
       </div>
     </div>
   )

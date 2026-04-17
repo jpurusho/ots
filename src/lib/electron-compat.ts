@@ -29,6 +29,12 @@ interface ElectronAPI {
     openExternal: (url: string) => Promise<void>
     focus: () => Promise<void>
   }
+  update: {
+    check: () => Promise<{ status: string; version?: string; url?: string; notes?: string; message?: string }>
+    download: (url: string) => Promise<{ success: boolean; path?: string; size?: number }>
+    onUpdateAvailable: (cb: (version: string) => void) => () => void
+    onDownloadProgress: (cb: (progress: { downloaded: number; total: number; percent: number }) => void) => () => void
+  }
   backend: {
     getUrl: () => Promise<string>
     getStatus: () => Promise<{ status: string; scanner?: string }>

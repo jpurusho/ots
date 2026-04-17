@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { Loader2, Receipt, Users, DollarSign, Wallet, ArrowLeft, Trash2, Search, CalendarRange, CloudUpload, Download, Printer } from 'lucide-react'
 import { openReport } from '@/lib/print-utils'
 import { generateAndDownloadPdf, generateAndUploadPdf } from '@/lib/pdf-utils'
+import { useAccentColors } from '@/lib/accent-colors'
 
 interface Check {
   id: number
@@ -49,6 +50,7 @@ export function ChecksPage() {
   const { appUser } = useAuth()
   const queryClient = useQueryClient()
   const churchName = useChurchName()
+  const { card: cardColor } = useAccentColors()
   const [tab, setTab] = useState<'checks' | 'contributors' | 'statements'>('checks')
 
   const deleteCheckMutation = useMutation({
@@ -191,7 +193,7 @@ export function ChecksPage() {
         headers: ['Contributor', 'Checks', 'Period', 'Total'],
         rows: yearStatements.map(s => [s.payer_name, String(s.count), s.firstDate + ' — ' + s.lastDate, fmt(s.total)]),
         footer_row: ['Grand Total', String(yearStatements.reduce((s, r) => s + r.count, 0)), '', fmt(yearStatements.reduce((s, r) => s + r.total, 0))],
-        accent_color: '#4f46e5',
+        accent_color: cardColor,
         filename: 'ots_year_end_' + statementsYear + '_' + today + '.pdf',
       }
     }
@@ -201,7 +203,7 @@ export function ChecksPage() {
       headers: ['Payer', 'Check #', 'Date', 'Category', 'Memo', 'Amount'],
       rows: allChecks.map(c => [c.payer_name || 'Unknown', c.check_number || '—', c.offering_date || '—', (c.category || 'general').replace('_', ' '), (c.memo || '—').substring(0, 40), fmt(c.amount || 0)]),
       footer_row: ['Grand Total', '', '', '', '', fmt(totalAmount)],
-      accent_color: '#4f46e5',
+      accent_color: cardColor,
       filename: 'ots_check_contributions_' + today + '.pdf',
     }
   }
