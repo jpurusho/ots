@@ -1,12 +1,13 @@
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '@/lib/auth-context'
 import { useUploadManager } from '@/lib/upload-manager'
 import { useEnv } from '@/lib/env-context'
-import { isElectron } from '@/lib/electron-compat'
+import { isElectron, getElectronAPI } from '@/lib/electron-compat'
 import {
   LayoutDashboard, Upload, ClipboardCheck, FileText,
   Settings, Users, Activity, LogOut, PenLine, Receipt,
-  Loader2, Sparkles,
+  Loader2, Sparkles, ArrowDownCircle,
 } from 'lucide-react'
 
 const navItems = [
@@ -29,6 +30,15 @@ export function Layout() {
   const { state: uploadState } = useUploadManager()
   const { activeEnv, hasTestDb, switchEnvironment } = useEnv()
   const isAdmin = appUser?.role === 'admin'
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isElectron) return
+    const cleanup = getElectronAPI()?.update.onUpdateAvailable((version) => {
+      setUpdateAvailable(version)
+    })
+    return () => { cleanup?.() }
+  }, [])
 
   return (
     <div className="min-h-screen flex">
@@ -40,7 +50,14 @@ export function Layout() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-bold">OTS</h1>
-              <p className="text-xs text-muted">v3.1.4</p>
+              {updateAvailable ? (
+                <NavLink to="/settings" className="flex items-center gap-1 text-[10px] text-warning animate-pulse"
+                  style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
+                  <ArrowDownCircle className="w-3 h-3" /> v{updateAvailable} available
+                </NavLink>
+              ) : (
+                <p className="text-xs text-muted">v3.3.0</p>
+              )}
             </div>
             {isElectron && hasTestDb && (
               <div className="flex flex-col items-end gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
