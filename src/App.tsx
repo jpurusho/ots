@@ -126,6 +126,8 @@ export default function App() {
       if (config) {
         initSupabase(config.url, config.anonKey)
       }
+      // Restart backend with the new credentials (it started without them)
+      try { await api.backend.restart() } catch { /* may not be running yet */ }
     }
     setNeedsSetup(false)
     setConfigReady(true)
