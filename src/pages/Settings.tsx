@@ -2,7 +2,7 @@ import { getBackendUrl } from '@/lib/backend'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Sun, Moon, Monitor } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X } from 'lucide-react'
 import { DriveFolderPicker } from '@/components/DriveFolderPicker'
 import { useTheme } from '@/lib/theme-context'
 import { useAccentColors } from '@/lib/accent-colors'
@@ -437,22 +437,14 @@ function ColorPicker({ label, description, value, onChange }: {
 }
 
 function ThemesTab() {
-  const { theme, setTheme, resolved } = useTheme()
+  const { preset, setPreset, presets } = useTheme()
   const queryClient = useQueryClient()
-
-  const options: Array<{ value: 'light' | 'dark' | 'system'; label: string; icon: typeof Sun; desc: string }> = [
-    { value: 'light', label: 'Light', icon: Sun, desc: 'Always use light theme' },
-    { value: 'dark', label: 'Dark', icon: Moon, desc: 'Always use dark theme' },
-    { value: 'system', label: 'System', icon: Monitor, desc: 'Follow your OS preference' },
-  ]
-
   const accentColors = useAccentColors()
 
   const [reportColor, setReportColor] = useState(accentColors.report)
   const [cardColor, setCardColor] = useState(accentColors.card)
   const [colorSaved, setColorSaved] = useState(false)
 
-  // Sync local state when DB values load (initial fetch)
   useEffect(() => {
     setReportColor(accentColors.report)
     setCardColor(accentColors.card)
@@ -470,27 +462,33 @@ function ThemesTab() {
 
   return (
     <div className="space-y-4">
+      {/* Theme presets */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="p-5">
-          <h3 className="text-sm font-medium mb-4">Appearance</h3>
-          <div className="grid grid-cols-3 gap-3">
-            {options.map(({ value, label, icon: Icon, desc }) => (
-              <button key={value} onClick={() => setTheme(value)}
-                className={`p-4 rounded-xl border-2 text-center transition-colors cursor-pointer ${
-                  theme === value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
+          <h3 className="text-sm font-medium mb-4">App Theme</h3>
+          <p className="text-xs text-muted mb-4">Choose a theme for all users in this environment.</p>
+          <div className="grid grid-cols-4 gap-3">
+            {Object.entries(presets).map(([key, p]) => (
+              <button key={key} onClick={() => setPreset(key)}
+                className={`rounded-xl border-2 overflow-hidden transition-all cursor-pointer ${
+                  preset === key ? 'border-primary ring-1 ring-primary scale-[1.02]' : 'border-border hover:border-primary/30'
                 }`}>
-                <Icon className={`w-6 h-6 mx-auto mb-2 ${theme === value ? 'text-primary' : 'text-muted'}`} />
-                <p className="text-sm font-medium">{label}</p>
-                <p className="text-[10px] text-muted mt-1">{desc}</p>
+                {/* Color preview swatch */}
+                <div className="h-12 relative" style={{ backgroundColor: p.colors.background }}>
+                  <div className="absolute inset-x-2 top-2 h-3 rounded" style={{ backgroundColor: p.colors.card }} />
+                  <div className="absolute left-3 bottom-2 w-8 h-2 rounded" style={{ backgroundColor: p.colors.primary }} />
+                  <div className="absolute right-3 bottom-2 w-4 h-2 rounded" style={{ backgroundColor: p.colors.border }} />
+                </div>
+                <div className="px-2 py-1.5 text-center" style={{ backgroundColor: p.colors.card }}>
+                  <p className="text-[10px] font-medium" style={{ color: p.colors['card-foreground'] }}>{p.label}</p>
+                </div>
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted mt-4 text-center">
-            Currently using: <strong>{resolved}</strong> theme
-          </p>
         </div>
       </div>
 
+      {/* Report accent colors */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="p-5 space-y-5">
           <h3 className="text-sm font-medium">Report Colors</h3>
@@ -517,7 +515,6 @@ function ThemesTab() {
               <Save className="w-4 h-4" />
               {hasColorChanges ? 'Save Colors' : 'Saved'}
             </button>
-            {/* Preview swatches */}
             <div className="flex items-center gap-2 ml-auto">
               <span className="text-[10px] text-muted">Preview:</span>
               <div className="flex gap-1">

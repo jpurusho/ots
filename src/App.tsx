@@ -135,25 +135,33 @@ export default function App() {
     setConfigReady(true)
   }
 
-  // Wrap everything in ThemeProvider so CSS variables are always set
-  // (even Setup wizard and loading spinner need theme vars)
+  // QueryClientProvider must wrap ThemeProvider (theme reads from DB via useQuery)
+  // ThemeProvider must wrap everything (CSS vars needed for all UI)
   if (needsSetup) {
-    return <ThemeProvider><SetupPage onComplete={handleSetupComplete} /></ThemeProvider>
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SetupPage onComplete={handleSetupComplete} />
+        </ThemeProvider>
+      </QueryClientProvider>
+    )
   }
 
   if (!configReady) {
     return (
-      <ThemeProvider>
-        <div className="min-h-screen flex items-center justify-center bg-background">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      </ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <div className="min-h-screen flex items-center justify-center bg-background">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        </ThemeProvider>
+      </QueryClientProvider>
     )
   }
 
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
         <EnvProvider>
           <AuthProvider>
             <BrowserRouter basename={isElectron ? '/' : import.meta.env.BASE_URL}>
@@ -165,7 +173,7 @@ export default function App() {
             </BrowserRouter>
           </AuthProvider>
         </EnvProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   )
 }
