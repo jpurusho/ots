@@ -125,7 +125,7 @@ async function checkForUpdatesOnLaunch(): Promise<void> {
           if (res.statusCode === 200) resolve(JSON.parse(data))
           else reject(new Error(`HTTP ${res.statusCode}`))
         })
-      }).on('error', reject)
+      }).on('error', () => reject(new Error('Cannot reach GitHub')))
     })
     const latestVersion = release.tag_name?.replace(/^v/, '') || ''
     const current = app.getVersion().split('.').map(Number)

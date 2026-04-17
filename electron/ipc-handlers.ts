@@ -49,10 +49,11 @@ export function registerIpcHandlers(): void {
           res.on('data', (chunk: string) => { data += chunk })
           res.on('end', () => {
             if (res.statusCode === 200) resolve(JSON.parse(data))
+            else if (res.statusCode === 403) reject(new Error('GitHub API rate limit reached. Try again in a few minutes.'))
             else if (res.statusCode === 404) reject(new Error('No releases found'))
-            else reject(new Error(`HTTP ${res.statusCode}`))
+            else reject(new Error(`Update check failed (HTTP ${res.statusCode}). Try again later.`))
           })
-        }).on('error', (err: any) => reject(err))
+        }).on('error', (err: any) => reject(new Error(`Cannot reach GitHub: ${err.message}`)))
       })
       const latestVersion = release.tag_name?.replace(/^v/, '') || ''
       const current = currentVersion.split('.').map(Number)
