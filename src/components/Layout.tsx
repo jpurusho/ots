@@ -51,10 +51,18 @@ export function Layout() {
             <div>
               <h1 className="text-lg font-bold">OTS</h1>
               {updateAvailable ? (
-                <NavLink to="/settings" className="flex items-center gap-1 text-[10px] text-warning animate-pulse"
-                  style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
-                  <ArrowDownCircle className="w-3 h-3" /> v{updateAvailable} available
-                </NavLink>
+                isAdmin ? (
+                  <NavLink to="/settings" className="flex items-center gap-1 text-[10px] text-warning animate-pulse"
+                    style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
+                    <ArrowDownCircle className="w-3 h-3" /> v{updateAvailable} available
+                  </NavLink>
+                ) : (
+                  <button onClick={() => getElectronAPI()?.app.openExternal(`https://github.com/jpurusho/ots/releases/latest`)}
+                    className="flex items-center gap-1 text-[10px] text-warning animate-pulse cursor-pointer"
+                    style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
+                    <ArrowDownCircle className="w-3 h-3" /> v{updateAvailable} available
+                  </button>
+                )
               ) : (
                 <p className="text-xs text-muted">v3.3.0</p>
               )}
