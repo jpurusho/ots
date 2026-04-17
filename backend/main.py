@@ -356,6 +356,7 @@ class GeneratePdfRequest(BaseModel):
     footer_row: list[str] | None = None
     filename: str = "report.pdf"
     upload_to_drive: bool = False
+    accent_color: str | None = None  # hex color for header/footer, default purple
 
 
 @app.get("/api/drive/folders")
@@ -521,9 +522,11 @@ async def import_from_drive(req: DriveImportRequest):
 
 
 def _generate_pdf(title: str, subtitle: str, headers: list[str],
-                   rows: list[list[str]], footer_row: list[str] | None = None) -> bytes:
-    """Generate a styled PDF from structured table data using ReportLab."""
+                   rows: list[list[str]], footer_row: list[str] | None = None,
+                   accent_color: str | None = None) -> bytes:
+    """Generate a card-style PDF report. Title band is the first table row for perfect alignment."""
     import io
+    import datetime
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter, landscape
     from reportlab.lib.units import inch
@@ -531,55 +534,46 @@ def _generate_pdf(title: str, subtitle: str, headers: list[str],
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from xml.sax.saxutils import escape
 
+    accent = colors.HexColor(accent_color or '#4f46e5')
     num_cols = len(headers)
     page = landscape(letter) if num_cols > 5 else letter
-    page_width = page[0]
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=page, topMargin=0.5*inch, bottomMargin=0.5*inch,
                             leftMargin=0.5*inch, rightMargin=0.5*inch)
-    avail_width = page_width - 1.0 * inch
+    avail_width = page[0] - 1.0 * inch
     styles = getSampleStyleSheet()
     elements = []
 
-    # Title
-    title_style = ParagraphStyle('ReportTitle', parent=styles['Heading1'],
-                                  fontSize=16, textColor=colors.HexColor('#4f46e5'), spaceAfter=4)
-    sub_style = ParagraphStyle('ReportSub', parent=styles['Normal'],
-                                fontSize=10, textColor=colors.HexColor('#64748b'), spaceAfter=16)
-    elements.append(Paragraph(escape(title), title_style))
-    if subtitle:
-        elements.append(Paragraph(escape(subtitle), sub_style))
-
-    # Cell styles for wrapping text
-    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10)
-    cell_right = ParagraphStyle('CellRight', parent=cell_style, alignment=2)  # 2=RIGHT
+    # ── Styles ──
+    title_style = ParagraphStyle('TitleCell', fontName='Helvetica-Bold', fontSize=14,
+                                  textColor=colors.white, leading=18)
+    sub_style = ParagraphStyle('SubCell', fontName='Helvetica', fontSize=9,
+                                textColor=colors.Color(1, 1, 1, 0.8), leading=12)
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8.5, leading=11)
+    cell_right = ParagraphStyle('CellRight', parent=cell_style, alignment=2)
     cell_bold = ParagraphStyle('CellBold', parent=cell_style, fontName='Helvetica-Bold')
-    cell_bold_right = ParagraphStyle('CellBoldRight', parent=cell_bold, alignment=2)
-    header_style = ParagraphStyle('HeaderCell', parent=styles['Normal'],
-                                   fontSize=7, fontName='Helvetica-Bold',
-                                   textColor=colors.HexColor('#64748b'), leading=9)
-    header_right = ParagraphStyle('HeaderRight', parent=header_style, alignment=2)
+    col_header = ParagraphStyle('ColHeader', fontName='Helvetica-Bold', fontSize=7.5,
+                                 textColor=colors.HexColor('#475569'), leading=10)
+    col_header_right = ParagraphStyle('ColHeaderR', parent=col_header, alignment=2)
     footer_cell = ParagraphStyle('FooterCell', parent=cell_bold, textColor=colors.white)
     footer_right = ParagraphStyle('FooterRight', parent=footer_cell, alignment=2)
 
-    # Detect which columns are amounts (last column is usually amount/total)
+    # Detect amount columns
     amount_cols = set()
     for i, h in enumerate(headers):
         hl = h.lower()
         if any(k in hl for k in ['amount', 'total', 'general', 'cash', 'sunday', 'building', 'misc']):
             amount_cols.add(i)
-    # Last column is often a total
     if num_cols > 2:
         amount_cols.add(num_cols - 1)
 
-    # Convert strings to Paragraph objects for text wrapping
     def make_row(cells, is_header=False, is_footer=False):
         result = []
         for i, cell in enumerate(cells):
             text = escape(str(cell)) if cell else ''
             if is_header:
-                style = header_right if i in amount_cols else header_style
+                style = col_header_right if i in amount_cols else col_header
             elif is_footer:
                 style = footer_right if i in amount_cols else footer_cell
             else:
@@ -587,56 +581,80 @@ def _generate_pdf(title: str, subtitle: str, headers: list[str],
             result.append(Paragraph(text, style))
         return result
 
-    table_data = [make_row(headers, is_header=True)]
+    # Row 0: Title band (spans all columns)
+    title_content = Paragraph(escape(title), title_style)
+    sub_content = Paragraph(escape(subtitle), sub_style) if subtitle else Paragraph('', sub_style)
+    title_row = [title_content] + [''] * (num_cols - 1)
+    sub_row = [sub_content] + [''] * (num_cols - 1)
+
+    table_data = [title_row, sub_row, make_row(headers, is_header=True)]
     for row in rows:
         table_data.append(make_row(row))
     if footer_row:
         table_data.append(make_row(footer_row, is_footer=True))
 
-    # Column widths: distribute evenly but give more to text columns
-    if num_cols > 0:
-        col_widths = []
-        for i in range(num_cols):
-            if i in amount_cols:
-                col_widths.append(avail_width * 0.10)
-            else:
-                col_widths.append(None)  # auto
-        # Calculate remaining width for auto columns
-        fixed = sum(w for w in col_widths if w is not None)
-        auto_count = sum(1 for w in col_widths if w is None)
-        if auto_count > 0:
-            auto_width = (avail_width - fixed) / auto_count
-            col_widths = [w if w is not None else auto_width for w in col_widths]
-    else:
-        col_widths = None
+    # Column widths
+    amt_width = avail_width * 0.12
+    col_widths = []
+    for i in range(num_cols):
+        col_widths.append(amt_width if i in amount_cols else None)
+    fixed = sum(w for w in col_widths if w is not None)
+    auto_count = sum(1 for w in col_widths if w is None)
+    if auto_count > 0:
+        auto_width = (avail_width - fixed) / auto_count
+        col_widths = [w if w is not None else auto_width for w in col_widths]
 
-    t = Table(table_data, colWidths=col_widths, repeatRows=1)
+    t = Table(table_data, colWidths=col_widths)
     style_cmds = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-        ('TOPPADDING', (0, 0), (-1, 0), 6),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
-        ('TOPPADDING', (0, 1), (-1, -1), 4),
-        ('LINEBELOW', (0, 0), (-1, -2), 0.5, colors.HexColor('#e5e7eb')),
-        ('LINEABOVE', (0, 0), (-1, 0), 1.5, colors.HexColor('#4f46e5')),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        # Title band (rows 0-1): accent background, span all columns
+        ('SPAN', (0, 0), (-1, 0)),
+        ('SPAN', (0, 1), (-1, 1)),
+        ('BACKGROUND', (0, 0), (-1, 1), accent),
+        ('TOPPADDING', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 0),
+        ('TOPPADDING', (0, 1), (-1, 1), 0),
+        ('BOTTOMPADDING', (0, 1), (-1, 1), 12),
+        ('LEFTPADDING', (0, 0), (-1, 1), 16),
+
+        # Column headers (row 2)
+        ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#f1f5f9')),
+        ('TOPPADDING', (0, 2), (-1, 2), 10),
+        ('BOTTOMPADDING', (0, 2), (-1, 2), 10),
+
+        # All cells padding
+        ('LEFTPADDING', (0, 2), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 2), (-1, -1), 12),
+        ('TOPPADDING', (0, 3), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 3), (-1, -1), 7),
+
+        # Row dividers (below each data row, not below last)
+        ('LINEBELOW', (0, 2), (-1, -2), 0.5, colors.HexColor('#e2e8f0')),
+
+        # Outer border
+        ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#e2e8f0')),
+
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]
-    for i in range(1, len(table_data)):
-        if i % 2 == 0:
+
+    # Zebra striping (data rows start at index 3)
+    for i in range(3, len(table_data)):
+        if (i - 3) % 2 == 1:
             style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f8fafc')))
+
+    # Footer row
     if footer_row:
         last_idx = len(table_data) - 1
         style_cmds.extend([
-            ('BACKGROUND', (0, last_idx), (-1, last_idx), colors.HexColor('#4f46e5')),
-            ('LINEABOVE', (0, last_idx), (-1, last_idx), 1.5, colors.HexColor('#4f46e5')),
+            ('BACKGROUND', (0, last_idx), (-1, last_idx), accent),
+            ('TEXTCOLOR', (0, last_idx), (-1, last_idx), colors.white),
         ])
+
     t.setStyle(TableStyle(style_cmds))
     elements.append(t)
 
     elements.append(Spacer(1, 20))
-    gen_footer = ParagraphStyle('Footer', parent=styles['Normal'],
-                                 fontSize=8, textColor=colors.HexColor('#94a3b8'))
-    elements.append(Paragraph(f'Generated by OTS on {__import__("datetime").date.today().strftime("%m/%d/%Y")}', gen_footer))
+    gen_style = ParagraphStyle('GenFooter', fontSize=8, textColor=colors.HexColor('#94a3b8'))
+    elements.append(Paragraph(f'Generated by OTS on {datetime.date.today().strftime("%m/%d/%Y")}', gen_style))
 
     doc.build(elements)
     return buf.getvalue()
@@ -647,7 +665,7 @@ async def generate_pdf(req: GeneratePdfRequest):
     """Generate a PDF from structured data. Optionally upload to Drive.
     Returns the PDF as base64 for frontend download."""
     try:
-        pdf_bytes = _generate_pdf(req.title, req.subtitle, req.headers, req.rows, req.footer_row)
+        pdf_bytes = _generate_pdf(req.title, req.subtitle, req.headers, req.rows, req.footer_row, req.accent_color)
 
         result: dict = {"success": True, "size": len(pdf_bytes)}
 

@@ -382,6 +382,7 @@ export function ReportsPage() {
         headers: ['Date', 'General', 'Cash', 'Sunday School', 'Building Fund', 'Misc', 'Total'],
         rows: offerings.map(o => [formatDate(o.offering_date), fmt(o.general), fmt(o.cash), fmt(o.sunday_school), fmt(o.building_fund), fmt(o.misc), '$' + rowTotal(o).toFixed(2)]),
         footer_row: ['Total', '$' + grandTotal.general.toFixed(2), '$' + grandTotal.cash.toFixed(2), '$' + grandTotal.sunday_school.toFixed(2), '$' + grandTotal.building_fund.toFixed(2), '$' + grandTotal.misc.toFixed(2), '$' + grandTotalSum.toFixed(2)],
+        accent_color: '#16a34a',
         filename: 'ots_report_' + periodLabel.replace(/\s+/g, '_').toLowerCase() + '_' + today + '.pdf',
       })
     } catch (err) { alert(err instanceof Error ? err.message : 'PDF failed') }
@@ -427,7 +428,10 @@ export function ReportsPage() {
     }).join('')
     return '<div style="font-family:system-ui,sans-serif;max-width:700px;margin:0 auto;color:#1a1a2e">' +
       '<div style="background:#4f46e5;color:white;padding:20px 24px;border-radius:8px 8px 0 0"><h1 style="margin:0;font-size:18px">' + title + '</h1><p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + '</p></div>' +
-      '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#f1f5f9">' +
+      '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">' +
+      '<colgroup><col style="width:22%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/></colgroup>' +
+      '<thead><tr style="background:#f1f5f9">' +
       '<th style="' + thStyle + ';text-align:left">Date</th><th style="' + thStyle + '">General</th><th style="' + thStyle + '">Cash</th><th style="' + thStyle + '">Sunday School</th><th style="' + thStyle + '">Building Fund</th><th style="' + thStyle + '">Misc</th><th style="' + thStyle + '">Total</th>' +
       '</tr></thead><tbody>' + rows + '</tbody><tfoot><tr style="background:#4f46e5;color:white">' +
       '<td style="' + ftStyle + ';text-align:left">Total</td><td style="' + ftStyle + '">$' + grandTotal.general.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.cash.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.sunday_school.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.building_fund.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.misc.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotalSum.toFixed(2) + '</td>' +

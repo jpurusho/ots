@@ -191,6 +191,7 @@ export function ChecksPage() {
         headers: ['Contributor', 'Checks', 'Period', 'Total'],
         rows: yearStatements.map(s => [s.payer_name, String(s.count), s.firstDate + ' — ' + s.lastDate, fmt(s.total)]),
         footer_row: ['Grand Total', String(yearStatements.reduce((s, r) => s + r.count, 0)), '', fmt(yearStatements.reduce((s, r) => s + r.total, 0))],
+        accent_color: '#4f46e5',
         filename: 'ots_year_end_' + statementsYear + '_' + today + '.pdf',
       }
     }
@@ -200,6 +201,7 @@ export function ChecksPage() {
       headers: ['Payer', 'Check #', 'Date', 'Category', 'Memo', 'Amount'],
       rows: allChecks.map(c => [c.payer_name || 'Unknown', c.check_number || '—', c.offering_date || '—', (c.category || 'general').replace('_', ' '), (c.memo || '—').substring(0, 40), fmt(c.amount || 0)]),
       footer_row: ['Grand Total', '', '', '', '', fmt(totalAmount)],
+      accent_color: '#4f46e5',
       filename: 'ots_check_contributions_' + today + '.pdf',
     }
   }
