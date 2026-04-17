@@ -3,10 +3,15 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
+const pkg = require('./package.json')
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // GitHub Pages deploy: /ots/, Electron + local dev: /
   base: process.env.GITHUB_ACTIONS && !process.env.ELECTRON_BUILD ? '/ots/' : '/',
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true,

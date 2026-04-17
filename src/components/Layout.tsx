@@ -35,10 +35,12 @@ export function Layout() {
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [downloadDone, setDownloadDone] = useState(false)
+  const [appVersion, setAppVersion] = useState(__APP_VERSION__)
 
   useEffect(() => {
     if (!isElectron) return
     const api = getElectronAPI()
+    api?.app.getVersion().then(v => setAppVersion(v))
     const cleanupAvailable = api?.update.onUpdateAvailable((version) => {
       setUpdateAvailable(version)
     })
@@ -82,7 +84,7 @@ export function Layout() {
                   <ArrowDownCircle className="w-3 h-3" /> v{updateAvailable} available
                 </button>
               ) : (
-                <p className="text-xs text-muted">v3.3.1</p>
+                <p className="text-xs text-muted">v{appVersion}</p>
               )}
             </div>
             {isElectron && hasTestDb && (

@@ -15,7 +15,7 @@ const WORKFLOW_STEPS = [
 ]
 
 export function AboutPage() {
-  const [appVersion, setAppVersion] = useState('3.3.2')
+  const [appVersion, setAppVersion] = useState(__APP_VERSION__)
   const [checking, setChecking] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<{ status: string; version?: string } | null>(null)
   const [downloading, setDownloading] = useState(false)

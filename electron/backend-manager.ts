@@ -149,18 +149,17 @@ export function stopBackend(): void {
   const pid = backendProcess.pid
 
   try {
-    backendProcess.kill('SIGTERM')
+    // Kill the entire process group (PyInstaller spawns a child process)
+    if (pid) process.kill(-pid, 'SIGTERM')
   } catch {
-    // Process may already be dead
+    try { backendProcess.kill('SIGTERM') } catch { /* */ }
   }
 
   // Force kill after 3 seconds if still running
   setTimeout(() => {
     try {
-      if (pid) process.kill(pid, 'SIGKILL')
-    } catch {
-      // Already dead
-    }
+      if (pid) process.kill(-pid, 'SIGKILL')
+    } catch { /* Already dead */ }
   }, 3000)
 
   backendProcess = null
