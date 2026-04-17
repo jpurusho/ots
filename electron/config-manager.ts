@@ -64,7 +64,9 @@ export function saveConfig(partial: Partial<OTSConfig>): OTSConfig {
 
 export function hasConfig(): boolean {
   const config = loadConfig()
-  return !!(config.supabase.prod?.url && config.supabase.prod?.anonKey)
+  const prod = config.supabase.prod
+  const test = config.supabase.test
+  return !!(prod?.url && prod?.anonKey) || !!(test?.url && test?.anonKey)
 }
 
 export function getActiveSupabase(): SupabaseConfig | null {
