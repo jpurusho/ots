@@ -7,7 +7,7 @@ import { isElectron, getElectronAPI } from '@/lib/electron-compat'
 import {
   LayoutDashboard, Upload, ClipboardCheck, FileText,
   Settings, Users, Activity, LogOut, PenLine, Receipt,
-  Loader2, Sparkles, ArrowDownCircle,
+  Loader2, Sparkles, ArrowDownCircle, Download, CheckCircle, X,
 } from 'lucide-react'
 
 const navItems = [
@@ -31,14 +31,39 @@ export function Layout() {
   const { activeEnv, hasTestDb, switchEnvironment } = useEnv()
   const isAdmin = appUser?.role === 'admin'
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+  const [downloadDone, setDownloadDone] = useState(false)
 
   useEffect(() => {
     if (!isElectron) return
-    const cleanup = getElectronAPI()?.update.onUpdateAvailable((version) => {
+    const api = getElectronAPI()
+    const cleanupAvailable = api?.update.onUpdateAvailable((version) => {
       setUpdateAvailable(version)
     })
-    return () => { cleanup?.() }
+    const cleanupProgress = api?.update.onDownloadProgress((p) => {
+      setDownloadProgress(p.percent)
+    })
+    return () => { cleanupAvailable?.(); cleanupProgress?.() }
   }, [])
+
+  const handleDownloadUpdate = async () => {
+    if (!updateAvailable) return
+    setDownloading(true)
+    setDownloadProgress(0)
+    setDownloadDone(false)
+    try {
+      const api = getElectronAPI()
+      const zipUrl = `https://github.com/jpurusho/ots/releases/download/v${updateAvailable}/OTS-${updateAvailable}-arm64-mac.zip`
+      await api?.update.download(zipUrl)
+      setDownloadDone(true)
+    } catch {
+      setDownloadDone(false)
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -51,20 +76,13 @@ export function Layout() {
             <div>
               <h1 className="text-lg font-bold">OTS</h1>
               {updateAvailable ? (
-                isAdmin ? (
-                  <NavLink to="/settings" className="flex items-center gap-1 text-[10px] text-warning animate-pulse"
-                    style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
-                    <ArrowDownCircle className="w-3 h-3" /> v{updateAvailable} available
-                  </NavLink>
-                ) : (
-                  <button onClick={() => getElectronAPI()?.app.openExternal(`https://github.com/jpurusho/ots/releases/latest`)}
-                    className="flex items-center gap-1 text-[10px] text-warning animate-pulse cursor-pointer"
-                    style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
-                    <ArrowDownCircle className="w-3 h-3" /> v{updateAvailable} available
-                  </button>
-                )
+                <button onClick={() => setShowUpdateModal(true)}
+                  className="flex items-center gap-1 text-[10px] text-warning animate-pulse cursor-pointer"
+                  style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
+                  <ArrowDownCircle className="w-3 h-3" /> v{updateAvailable} available
+                </button>
               ) : (
-                <p className="text-xs text-muted">v3.3.0</p>
+                <p className="text-xs text-muted">v3.3.1</p>
               )}
             </div>
             {isElectron && hasTestDb && (
@@ -201,6 +219,61 @@ export function Layout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Update modal — shown for both admin and operator */}
+      {showUpdateModal && updateAvailable && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !downloading && setShowUpdateModal(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Update Available</h2>
+              {!downloading && (
+                <button onClick={() => setShowUpdateModal(false)} className="p-1 text-muted hover:text-foreground cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <p className="text-sm font-medium">OTS v{updateAvailable}</p>
+              <p className="text-xs text-muted mt-1">A new version is available for download.</p>
+            </div>
+
+            {!downloadDone ? (
+              <>
+                <button onClick={handleDownloadUpdate} disabled={downloading}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+                  {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  {downloading ? `Downloading... ${downloadProgress}%` : 'Download Update'}
+                </button>
+                {downloading && (
+                  <div className="h-2 bg-border rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${downloadProgress}%` }} />
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-success">
+                  <CheckCircle className="w-5 h-5" />
+                  <span className="text-sm font-medium">Downloaded to ~/Downloads</span>
+                </div>
+                <div className="rounded-lg bg-background p-3 text-xs text-muted space-y-1.5">
+                  <p className="font-medium text-foreground">To install the update:</p>
+                  <p>1. Quit OTS</p>
+                  <p>2. Open <strong>~/Downloads</strong> and unzip the new version</p>
+                  <p>3. Replace OTS.app in Applications with the new one</p>
+                  <p>4. Run: <code className="px-1 py-0.5 rounded bg-muted-foreground/10">xattr -rc /Applications/OTS.app</code></p>
+                  <p>5. Launch OTS</p>
+                </div>
+                <button onClick={() => setShowUpdateModal(false)}
+                  className="w-full px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted-foreground/10 cursor-pointer">
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
