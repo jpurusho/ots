@@ -131,17 +131,19 @@ export default function App() {
     setConfigReady(true)
   }
 
-  // Electron: show setup wizard if no config
+  // Wrap everything in ThemeProvider so CSS variables are always set
+  // (even Setup wizard and loading spinner need theme vars)
   if (needsSetup) {
-    return <SetupPage onComplete={handleSetupComplete} />
+    return <ThemeProvider><SetupPage onComplete={handleSetupComplete} /></ThemeProvider>
   }
 
-  // Electron: show loading while config loads
   if (!configReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
+      <ThemeProvider>
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </ThemeProvider>
     )
   }
 
