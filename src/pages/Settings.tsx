@@ -2,10 +2,9 @@ import { getBackendUrl } from '@/lib/backend'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Sun, Moon, Monitor, Download, RefreshCw } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Sun, Moon, Monitor } from 'lucide-react'
 import { DriveFolderPicker } from '@/components/DriveFolderPicker'
 import { useTheme } from '@/lib/theme-context'
-import { isElectron, getElectronAPI } from '@/lib/electron-compat'
 import { useAccentColors } from '@/lib/accent-colors'
 
 
@@ -23,7 +22,6 @@ const TABS = [
   { id: 'drive', label: 'Google Drive' },
   { id: 'email', label: 'Email' },
   { id: 'themes', label: 'Themes' },
-  { id: 'about', label: 'About' },
 ]
 
 // Fields that should use textarea (multiline)
@@ -236,7 +234,7 @@ export function SettingsPage() {
       {/* Themes tab */}
       {activeTab === 'themes' ? (
         <ThemesTab />
-      ) : activeTab !== 'about' ? (
+      ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="divide-y divide-border">
             {tabSettings.filter(s => !USAGE_FIELDS.includes(s.key)).map(setting => {
@@ -397,8 +395,6 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
-      ) : (
-        <AboutTab scannerMode={formValues['use_bedrock'] === 'true' ? 'AWS Bedrock' : 'Anthropic API'} />
       )}
     </div>
   )
@@ -531,126 +527,6 @@ function ThemesTab() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function AboutTab({ scannerMode }: { scannerMode: string }) {
-  const [checking, setChecking] = useState(false)
-  const [updateInfo, setUpdateInfo] = useState<{ status: string; version?: string; url?: string; notes?: string; message?: string } | null>(null)
-  const [downloading, setDownloading] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [downloadResult, setDownloadResult] = useState<{ success: boolean; path?: string } | null>(null)
-  const [appVersion, setAppVersion] = useState('3.2.0')
-
-  useEffect(() => {
-    if (isElectron) {
-      getElectronAPI()?.app.getVersion().then(v => setAppVersion(v))
-      const cleanup = getElectronAPI()?.update?.onDownloadProgress?.((p: { percent: number }) => setProgress(p.percent))
-      return () => { cleanup?.() }
-    }
-  }, [])
-
-  const handleCheck = async () => {
-    setChecking(true)
-    setUpdateInfo(null)
-    setDownloadResult(null)
-    try {
-      const api = getElectronAPI()
-      if (api) {
-        const result = await api.update.check()
-        setUpdateInfo(result)
-      }
-    } catch (err) {
-      setUpdateInfo({ status: 'error', message: err instanceof Error ? err.message : 'Check failed' })
-    } finally {
-      setChecking(false)
-    }
-  }
-
-  const handleDownload = async () => {
-    if (!updateInfo?.url) return
-    setDownloading(true)
-    setProgress(0)
-    setDownloadResult(null)
-    try {
-      const api = getElectronAPI()
-      if (api) {
-        const zipUrl = updateInfo.url.replace('/releases/tag/', '/releases/download/') + `/OTS-${updateInfo.version}-arm64-mac.zip`
-        const result = await (api.update as any).download(zipUrl)
-        setDownloadResult(result as { success: boolean; path?: string })
-      }
-    } catch {
-      setDownloadResult({ success: false })
-    } finally {
-      setDownloading(false)
-    }
-  }
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-      <div>
-        <p className="text-sm text-muted">Version</p>
-        <p className="text-lg font-bold">{appVersion}</p>
-      </div>
-      <div>
-        <p className="text-sm text-muted">Architecture</p>
-        <p className="text-sm">Supabase (PostgreSQL + Auth + Storage) + React + TanStack Query</p>
-      </div>
-      <div>
-        <p className="text-sm text-muted">AI Scanner</p>
-        <p className="text-sm">Claude via {scannerMode}</p>
-      </div>
-
-      {isElectron && (
-        <div className="pt-3 border-t border-border space-y-3">
-          <div className="flex items-center gap-3">
-            <button onClick={handleCheck} disabled={checking}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
-              {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Check for Updates
-            </button>
-            {updateInfo?.status === 'latest' && (
-              <span className="text-sm text-success">You're on the latest version</span>
-            )}
-            {updateInfo?.status === 'error' && (
-              <span className="text-sm text-destructive">{updateInfo.message}</span>
-            )}
-          </div>
-
-          {updateInfo?.status === 'available' && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
-              <div>
-                <p className="text-sm font-medium">v{updateInfo.version} available</p>
-                {updateInfo.notes && (
-                  <p className="text-xs text-muted mt-1 whitespace-pre-wrap max-h-24 overflow-y-auto">{updateInfo.notes}</p>
-                )}
-              </div>
-              {!downloadResult?.success && (
-                <button onClick={handleDownload} disabled={downloading}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
-                  {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  {downloading ? `Downloading... ${progress}%` : 'Download Update'}
-                </button>
-              )}
-              {downloading && (
-                <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
-                </div>
-              )}
-              {downloadResult?.success && (
-                <p className="text-sm text-success">Downloaded to ~/Downloads. Unzip and replace OTS.app.</p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="pt-3 border-t border-border">
-        <p className="text-sm text-muted">Previous Version</p>
-        <a href="https://github.com/jpurusho/ots-v0" target="_blank" rel="noreferrer"
-          className="text-sm text-primary hover:underline">github.com/jpurusho/ots-v0</a>
       </div>
     </div>
   )

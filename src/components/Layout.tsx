@@ -7,7 +7,7 @@ import { isElectron, getElectronAPI } from '@/lib/electron-compat'
 import {
   LayoutDashboard, Upload, ClipboardCheck, FileText,
   Settings, Users, Activity, LogOut, PenLine, Receipt,
-  Loader2, Sparkles, ArrowDownCircle, Download, CheckCircle, X,
+  Loader2, Sparkles, ArrowDownCircle, Download, CheckCircle, X, Info,
 } from 'lucide-react'
 
 const navItems = [
@@ -94,12 +94,10 @@ export function Layout() {
                 }`}>
                   {activeEnv}
                 </span>
-                {isAdmin && (
-                  <button onClick={() => switchEnvironment(activeEnv === 'prod' ? 'test' : 'prod')}
-                    className="text-[9px] text-muted hover:text-foreground cursor-pointer">
-                    Switch to {activeEnv === 'prod' ? 'test' : 'prod'}
-                  </button>
-                )}
+                <button onClick={() => switchEnvironment(activeEnv === 'prod' ? 'test' : 'prod')}
+                  className="text-[9px] text-muted hover:text-foreground cursor-pointer">
+                  Switch to {activeEnv === 'prod' ? 'test' : 'prod'}
+                </button>
               </div>
             )}
           </div>
@@ -130,6 +128,15 @@ export function Layout() {
               )}
             </NavLink>
           ))}
+
+          <NavLink to="/about"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                isActive ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:bg-muted-foreground/10 hover:text-foreground'
+              }`
+            }>
+            <Info className="w-4 h-4" /> About
+          </NavLink>
 
           {isAdmin && (
             <>

@@ -18,6 +18,7 @@ import { ActivityPage } from '@/pages/Activity'
 import { ChecksPage } from '@/pages/Checks'
 import { InvitePage } from '@/pages/Invite'
 import { AuthCallbackPage } from '@/pages/AuthCallback'
+import { AboutPage } from '@/pages/About'
 import { Loader2, ShieldX } from 'lucide-react'
 import { isElectron, getElectronAPI } from '@/lib/electron-compat'
 import { supabase, initSupabase } from '@/lib/supabase'
@@ -79,6 +80,7 @@ function AuthGate() {
           <Route path="review" element={<ReviewPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="checks" element={<ChecksPage />} />
+          <Route path="about" element={<AboutPage />} />
           {/* Admin-only routes */}
           <Route path="settings" element={<AdminGuard><SettingsPage /></AdminGuard>} />
           <Route path="users" element={<AdminGuard><UsersPage /></AdminGuard>} />
