@@ -87,7 +87,7 @@ export function Layout() {
                 <p className="text-xs text-muted">v{appVersion}</p>
               )}
             </div>
-            {isElectron && hasTestDb && (
+            {isElectron && (
               <div className="flex flex-col items-end gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                   activeEnv === 'prod'
@@ -96,10 +96,12 @@ export function Layout() {
                 }`}>
                   {activeEnv}
                 </span>
-                <button onClick={() => switchEnvironment(activeEnv === 'prod' ? 'test' : 'prod')}
-                  className="text-[9px] text-muted hover:text-foreground cursor-pointer">
-                  Switch to {activeEnv === 'prod' ? 'test' : 'prod'}
-                </button>
+                {hasTestDb && (
+                  <button onClick={() => switchEnvironment(activeEnv === 'prod' ? 'test' : 'prod')}
+                    className="text-[9px] text-muted hover:text-foreground cursor-pointer">
+                    Switch to {activeEnv === 'prod' ? 'test' : 'prod'}
+                  </button>
+                )}
               </div>
             )}
           </div>
