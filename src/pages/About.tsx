@@ -17,7 +17,7 @@ const WORKFLOW_STEPS = [
 export function AboutPage() {
   const [appVersion, setAppVersion] = useState(__APP_VERSION__)
   const [checking, setChecking] = useState(false)
-  const [updateInfo, setUpdateInfo] = useState<{ status: string; version?: string } | null>(null)
+  const [updateInfo, setUpdateInfo] = useState<{ status: string; version?: string; message?: string } | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [downloadDone, setDownloadDone] = useState(false)
@@ -34,9 +34,13 @@ export function AboutPage() {
     setUpdateInfo(null)
     try {
       const result = await getElectronAPI()?.update.check()
-      if (result) setUpdateInfo(result)
-    } catch {
-      setUpdateInfo({ status: 'error' })
+      if (result) {
+        setUpdateInfo(result)
+      } else {
+        setUpdateInfo({ status: 'error', message: 'Update check not available' })
+      }
+    } catch (err) {
+      setUpdateInfo({ status: 'error', message: err instanceof Error ? err.message : 'Check failed' })
     } finally {
       setChecking(false)
     }
@@ -119,7 +123,7 @@ export function AboutPage() {
                 <span className="text-sm text-success">You're on the latest version</span>
               )}
               {updateInfo?.status === 'error' && (
-                <span className="text-sm text-destructive">Check failed</span>
+                <span className="text-sm text-destructive">{updateInfo.message || 'Check failed'}</span>
               )}
             </div>
 
