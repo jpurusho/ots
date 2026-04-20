@@ -360,6 +360,21 @@ class GeneratePdfRequest(BaseModel):
     accent_color: Optional[str] = None  # hex color for header/footer, default purple
 
 
+@app.get("/api/drive/folder-info")
+async def get_drive_folder_info(folder_id: str):
+    """Resolve a Drive folder ID to its name and full path."""
+    creds = _get_setting("google_drive_credentials")
+    if not creds:
+        raise HTTPException(400, "Drive not configured")
+    try:
+        service = get_drive_service(creds)
+        path = get_folder_path(service, folder_id)
+        name = path.split('/')[-1].strip() if path else folder_id
+        return {"folder_id": folder_id, "name": name, "path": path}
+    except Exception as e:
+        raise HTTPException(500, f"Could not resolve folder: {e}")
+
+
 @app.get("/api/drive/folders")
 async def browse_drive_folders(parent: str = "root"):
     """Browse Drive folders for the folder picker."""

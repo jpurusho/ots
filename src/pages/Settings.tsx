@@ -2,7 +2,7 @@ import { getBackendUrl } from '@/lib/backend'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Copy, Check } from 'lucide-react'
 import { DriveFolderPicker } from '@/components/DriveFolderPicker'
 import { useTheme } from '@/lib/theme-context'
 import { useAccentColors } from '@/lib/accent-colors'
@@ -44,6 +44,11 @@ export function SettingsPage() {
   const [testResult, setTestResult] = useState<{ key: string; success: boolean; message: string } | null>(null)
   const [folderPicker, setFolderPicker] = useState<string | null>(null) // which field's picker is open
   const [folderPaths, setFolderPaths] = useState<Record<string, string>>({})
+  const [folderDisplayMode, setFolderDisplayMode] = useState<'name' | 'id'>(() =>
+    (localStorage.getItem('ots:drive_folder_display') as 'name' | 'id') || 'name'
+  )
+  const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [resolvingPaths, setResolvingPaths] = useState<Set<string>>(new Set())
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -61,6 +66,47 @@ export function SettingsPage() {
       setFormValues(vals)
     }
   }, [settings])
+
+  // Auto-resolve folder IDs → names when Drive tab is active
+  useEffect(() => {
+    if (activeTab !== 'drive' || !formValues) return
+    const toResolve: string[] = []
+    for (const key of FOLDER_PICKER_FIELDS) {
+      const id = formValues[key]
+      if (!id) continue
+      // Check localStorage cache first
+      const cached = localStorage.getItem('ots:folder_path:' + id)
+      if (cached) {
+        setFolderPaths(p => ({ ...p, [key]: cached }))
+      } else {
+        toResolve.push(key)
+      }
+    }
+    if (toResolve.length === 0) return
+
+    setResolvingPaths(new Set(toResolve))
+    ;(async () => {
+      const resolved: Record<string, string> = {}
+      for (const key of toResolve) {
+        const id = formValues[key]
+        if (!id) continue
+        try {
+          const url = (await getBackendUrl()) + '/api/drive/folder-info?folder_id=' + encodeURIComponent(id)
+          const resp = await fetch(url)
+          if (resp.ok) {
+            const data = await resp.json()
+            if (data.path) {
+              resolved[key] = data.path
+              localStorage.setItem('ots:folder_path:' + id, data.path)
+            }
+          }
+        } catch { /* backend unavailable — silently skip */ }
+      }
+      setFolderPaths(p => ({ ...p, ...resolved }))
+      setResolvingPaths(new Set())
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, formValues['drive_images_folder_id'], formValues['drive_reports_folder_id']])
 
   const saveMutation = useMutation({
     mutationFn: async (updates: Record<string, string>) => {
@@ -320,32 +366,108 @@ export function SettingsPage() {
                       />
                     </div>
                   ) : FOLDER_PICKER_FIELDS.includes(setting.key) ? (
-                    <div className="mt-2 space-y-2">
+                    <div className="mt-2 space-y-1.5">
+                      {/* Name / ID display toggle — shown once per field, persisted */}
+                      <div className="flex gap-1 w-fit rounded-md border border-border p-0.5 bg-muted/20 mb-2">
+                        {(['name', 'id'] as const).map(mode => (
+                          <button key={mode} onClick={() => {
+                            setFolderDisplayMode(mode)
+                            localStorage.setItem('ots:drive_folder_display', mode)
+                          }}
+                          className={`px-2.5 py-0.5 text-[11px] font-medium rounded cursor-pointer transition-colors ${
+                            folderDisplayMode === mode
+                              ? 'bg-background text-foreground shadow-sm'
+                              : 'text-muted hover:text-foreground'
+                          }`}>
+                            {mode === 'name' ? 'Show Name' : 'Show ID'}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Main row: input + actions */}
                       <div className="flex items-center gap-2">
-                        <input type="text" readOnly
-                          value={folderPaths[setting.key] || formValues[setting.key] || ''}
-                          placeholder="Select a folder..."
-                          className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background cursor-default"
-                        />
+                        <div className="relative flex-1">
+                          <input type="text" readOnly
+                            value={
+                              folderDisplayMode === 'name'
+                                ? folderPaths[setting.key]
+                                  || (resolvingPaths.has(setting.key) ? 'Resolving…' : '')
+                                  || formValues[setting.key]
+                                  || ''
+                                : formValues[setting.key] || ''
+                            }
+                            placeholder="Select a folder…"
+                            title={
+                              folderDisplayMode === 'name'
+                                ? folderPaths[setting.key] || formValues[setting.key] || ''
+                                : formValues[setting.key] || ''
+                            }
+                            className={`w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background cursor-default truncate ${
+                              resolvingPaths.has(setting.key) && folderDisplayMode === 'name' ? 'text-muted italic' : ''
+                            }`}
+                          />
+                        </div>
                         <button onClick={() => setFolderPicker(folderPicker === setting.key ? null : setting.key)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer whitespace-nowrap">
                           <FolderOpen className="w-4 h-4" /> Browse
                         </button>
                         {formValues[setting.key] && (
-                          <button onClick={() => { setFormValues(v => ({ ...v, [setting.key]: '' })); setFolderPaths(p => ({ ...p, [setting.key]: '' })) }}
-                            className="p-1.5 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
+                          <button onClick={() => {
+                            setFormValues(v => ({ ...v, [setting.key]: '' }))
+                            setFolderPaths(p => ({ ...p, [setting.key]: '' }))
+                          }} className="p-1.5 rounded hover:bg-destructive/10 text-muted hover:text-destructive cursor-pointer">
                             <X className="w-4 h-4" />
                           </button>
                         )}
                       </div>
-                      {formValues[setting.key] && !folderPaths[setting.key] && (
-                        <p className="text-[10px] text-muted font-mono">ID: {formValues[setting.key]}</p>
+
+                      {/* Secondary row: the other value (ID or name) + copy */}
+                      {formValues[setting.key] && (
+                        <div className="flex items-center gap-1.5 pl-0.5">
+                          {folderDisplayMode === 'name' ? (
+                            <>
+                              <span className="text-[11px] text-muted font-mono truncate max-w-[260px]">
+                                {formValues[setting.key]}
+                              </span>
+                              <button
+                                onClick={async () => {
+                                  await navigator.clipboard.writeText(formValues[setting.key])
+                                  setCopiedField(setting.key)
+                                  setTimeout(() => setCopiedField(f => f === setting.key ? null : f), 1500)
+                                }}
+                                title="Copy folder ID"
+                                className="text-muted hover:text-foreground cursor-pointer flex-shrink-0">
+                                {copiedField === setting.key
+                                  ? <Check className="w-3 h-3 text-success" />
+                                  : <Copy className="w-3 h-3" />}
+                              </button>
+                              {copiedField === setting.key && (
+                                <span className="text-[10px] text-success">Copied</span>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {folderPaths[setting.key] && (
+                                <span className="text-[11px] text-muted truncate max-w-[300px]">
+                                  📁 {folderPaths[setting.key]}
+                                </span>
+                              )}
+                              {resolvingPaths.has(setting.key) && !folderPaths[setting.key] && (
+                                <span className="text-[11px] text-muted italic flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" /> Resolving name…
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
                       )}
+
+                      {/* Folder picker */}
                       {folderPicker === setting.key && (
                         <DriveFolderPicker
                           onSelect={(id, path) => {
                             setFormValues(v => ({ ...v, [setting.key]: id }))
                             setFolderPaths(p => ({ ...p, [setting.key]: path }))
+                            localStorage.setItem('ots:folder_path:' + id, path)
                             setFolderPicker(null)
                           }}
                           onCancel={() => setFolderPicker(null)}
