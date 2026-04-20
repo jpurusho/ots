@@ -151,31 +151,31 @@ app.whenReady().then(async () => {
   registerIpcHandlers()
   createMenu()
 
-  // In production, serve renderer via local HTTP server (avoids file:// issues)
-  if (!isDev) {
-    const rendererDir = path.join(__dirname, '../../renderer')
-    rendererPort = await startRendererServer(rendererDir)
+  // Start renderer server for OAuth callback interception (both dev and prod).
+  // In dev, Electron loads from Vite (port 5173) but auth always redirects to
+  // port 48600 so the renderer-server can intercept and forward the code to
+  // the Electron window — which holds the PKCE code_verifier in its localStorage.
+  // In production, the renderer-server also serves the built SPA.
+  const rendererDir = isDev ? undefined : path.join(__dirname, '../../renderer')
+  rendererPort = await startRendererServer(rendererDir)
 
-    // When system browser redirects to /auth/callback?code=xxx,
-    // forward the code to the Electron window via executeJavaScript.
-    // This avoids a full page navigation — the Supabase client in the
-    // Electron window has the PKCE code_verifier in its localStorage.
-    setAuthCallbackHandler((callbackUrl) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        const parsed = new URL(callbackUrl, `http://localhost:${rendererPort}`)
-        const code = parsed.searchParams.get('code')
-        if (code) {
-          console.log('[Auth] Received OAuth code, exchanging in Electron window')
-          mainWindow.webContents.executeJavaScript(`
-            window.__otsAuthCode = ${JSON.stringify(code)};
-            window.dispatchEvent(new CustomEvent('ots-auth-callback', { detail: { code: ${JSON.stringify(code)} } }));
-          `)
-          mainWindow.show()
-          mainWindow.focus()
-        }
-      }
-    })
-  }
+  setAuthCallbackHandler((callbackUrl) => {
+    console.log('[Auth] Callback received from renderer-server:', callbackUrl.substring(0, 80))
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      console.error('[Auth] mainWindow not available when callback arrived')
+      return
+    }
+    const parsed = new URL(callbackUrl, `http://localhost:${rendererPort}`)
+    const code = parsed.searchParams.get('code')
+    if (!code) {
+      console.error('[Auth] No code in callback URL')
+      return
+    }
+    console.log('[Auth] Sending auth-callback IPC to renderer')
+    mainWindow.webContents.send('auth-callback', { code })
+    mainWindow.show()
+    mainWindow.focus()
+  })
 
   createWindow()
 

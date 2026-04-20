@@ -53,24 +53,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    // Electron: listen for OAuth code forwarded from the renderer server
-    // (system browser hits localhost:48600/auth/callback, server dispatches event here)
-    if (isElectron) {
-      const handleAuthCallback = async (e: Event) => {
-        const code = (e as CustomEvent).detail?.code
-        if (code) {
-          console.log('[Auth] Received OAuth code via event, exchanging...')
-          const { error } = await supabase.auth.exchangeCodeForSession(code)
-          if (error) {
-            console.error('[Auth] Code exchange failed:', error.message)
-          }
-          // onAuthStateChange will fire SIGNED_IN on success
+    // Production Electron: listen for OAuth code forwarded from renderer-server via IPC
+    // (system browser hits localhost:48600/auth/callback → webContents.send → ipcRenderer.on)
+    // Dev Electron uses window.location.href navigation so AuthCallbackPage handles it directly.
+    if (isElectron && !import.meta.env.DEV) {
+      const api = getElectronAPI()
+      const removeListener = api?.auth.onCallback(async (code) => {
+        console.log('[Auth] Received OAuth code via IPC, exchanging...')
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error) {
+          console.error('[Auth] Code exchange failed:', error.message)
         }
-      }
-      window.addEventListener('ots-auth-callback', handleAuthCallback)
+      })
       return () => {
         subscription.unsubscribe()
-        window.removeEventListener('ots-auth-callback', handleAuthCallback)
+        removeListener?.()
       }
     }
 
@@ -172,20 +169,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const callbackPath = '/auth/callback'
 
     if (isElectron) {
-      // Electron: open auth in system browser (has saved Google sessions).
-      // PKCE code_verifier is stored in localhost localStorage.
-      // Callback redirects back to localhost:48600/auth/callback.
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          skipBrowserRedirect: true,
-          redirectTo: window.location.origin + callbackPath,
-        },
-      })
-      if (error) throw error
-      if (data.url) {
-        const api = getElectronAPI()
-        await api?.app.openExternal(data.url)
+      if (import.meta.env.DEV) {
+        // Dev: navigate the BrowserWindow directly through OAuth.
+        // The callback returns to localhost:5173/auth/callback (Vite), where
+        // AuthCallbackPage exchanges the code. localStorage is preserved across
+        // the navigation so the PKCE verifier is always found.
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            skipBrowserRedirect: true,
+            redirectTo: window.location.origin + callbackPath,
+          },
+        })
+        if (error) throw error
+        if (data.url) window.location.href = data.url
+      } else {
+        // Production: system browser + renderer-server at port 48600.
+        // PKCE verifier stored in Electron's localStorage; renderer-server
+        // intercepts the callback and forwards the code via IPC.
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            skipBrowserRedirect: true,
+            redirectTo: 'http://localhost:48600' + callbackPath,
+          },
+        })
+        if (error) throw error
+        if (data.url) {
+          const api = getElectronAPI()
+          await api?.app.openExternal(data.url)
+        }
       }
     } else {
       // Browser: standard redirect flow (stays in same window)

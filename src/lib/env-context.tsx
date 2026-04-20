@@ -9,6 +9,7 @@ type EnvMode = 'prod' | 'test'
 interface EnvState {
   activeEnv: EnvMode
   hasTestDb: boolean
+  hasProdDb: boolean
   switching: boolean
   switchEnvironment: (env: EnvMode) => Promise<void>
 }
@@ -16,6 +17,7 @@ interface EnvState {
 const EnvContext = createContext<EnvState>({
   activeEnv: 'prod',
   hasTestDb: false,
+  hasProdDb: false,
   switching: false,
   switchEnvironment: async () => {},
 })
@@ -24,6 +26,7 @@ export function EnvProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [activeEnv, setActiveEnv] = useState<EnvMode>('prod')
   const [hasTestDb, setHasTestDb] = useState(false)
+  const [hasProdDb, setHasProdDb] = useState(false)
   const [switching, setSwitching] = useState(false)
 
   useEffect(() => {
@@ -32,8 +35,19 @@ export function EnvProvider({ children }: { children: ReactNode }) {
     if (!api) return
 
     api.config.get().then(config => {
-      setActiveEnv(config.activeEnv || 'prod')
-      setHasTestDb(!!(config.supabase?.test?.url && config.supabase?.test?.anonKey))
+      const hasProd = !!(config.supabase?.prod?.url && config.supabase?.prod?.anonKey)
+      const hasTest = !!(config.supabase?.test?.url && config.supabase?.test?.anonKey)
+      setHasProdDb(hasProd)
+      setHasTestDb(hasTest)
+
+      // Auto-correct: if activeEnv points to an env with no credentials, fall back
+      let env: EnvMode = config.activeEnv || 'prod'
+      if (env === 'prod' && !hasProd && hasTest) env = 'test'
+      else if (env === 'test' && !hasTest && hasProd) env = 'prod'
+      setActiveEnv(env)
+
+      // Persist correction if needed
+      if (env !== config.activeEnv) api.config.save({ activeEnv: env })
     })
   }, [])
 
@@ -76,7 +90,7 @@ export function EnvProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <EnvContext.Provider value={{ activeEnv, hasTestDb, switching, switchEnvironment }}>
+    <EnvContext.Provider value={{ activeEnv, hasTestDb, hasProdDb, switching, switchEnvironment }}>
       {children}
     </EnvContext.Provider>
   )

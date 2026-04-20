@@ -28,7 +28,7 @@ const adminItems = [
 export function Layout() {
   const { appUser, user, signOut } = useAuth()
   const { state: uploadState } = useUploadManager()
-  const { activeEnv, hasTestDb, switchEnvironment } = useEnv()
+  const { activeEnv, hasTestDb, hasProdDb, switchEnvironment } = useEnv()
   const isAdmin = appUser?.role === 'admin'
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
   const [showUpdateModal, setShowUpdateModal] = useState(false)
@@ -96,7 +96,7 @@ export function Layout() {
                 }`}>
                   {activeEnv}
                 </span>
-                {hasTestDb && (
+                {(activeEnv === 'prod' ? hasTestDb : hasProdDb) && (
                   <button onClick={() => switchEnvironment(activeEnv === 'prod' ? 'test' : 'prod')}
                     className="text-[9px] text-muted hover:text-foreground cursor-pointer">
                     Switch to {activeEnv === 'prod' ? 'test' : 'prod'}

@@ -23,6 +23,9 @@ interface OTSConfig {
 }
 
 interface ElectronAPI {
+  auth: {
+    onCallback: (cb: (code: string) => void) => () => void
+  }
   app: {
     getVersion: () => Promise<string>
     getPlatform: () => Promise<string>

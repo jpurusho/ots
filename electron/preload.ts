@@ -1,6 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
+  auth: {
+    onCallback: (cb: (code: string) => void) => {
+      console.log('[Preload] Registering auth-callback IPC listener')
+      const handler = (_e: Electron.IpcRendererEvent, data: { code: string }) => {
+        console.log('[Preload] auth-callback IPC received, code length:', data?.code?.length)
+        cb(data.code)
+      }
+      ipcRenderer.on('auth-callback', handler)
+      return () => ipcRenderer.removeListener('auth-callback', handler)
+    },
+  },
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getPlatform: () => ipcRenderer.invoke('app:getPlatform'),

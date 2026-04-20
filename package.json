@@ -1,11 +1,11 @@
 {
   "name": "ots",
   "private": true,
-  "version": "3.5.1",
+  "version": "3.5.2",
   "main": "dist/electron/electron/main.js",
   "scripts": {
     "dev": "vite",
-    "dev:electron": "concurrently -k \"npm run dev\" \"wait-on tcp:5173 && tsc -p tsconfig.main.json && electron .\"",
+    "dev:electron": "concurrently -k \"ELECTRON=1 npm run dev\" \"wait-on tcp:5173 && tsc -p tsconfig.main.json && electron .\"",
     "build": "tsc -b && vite build",
     "build:electron": "tsc -p tsconfig.main.json && tsc -b && vite build",
     "dist": "npm run build:electron && electron-builder build --mac --publish never",

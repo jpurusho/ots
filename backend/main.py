@@ -12,6 +12,7 @@ Usage:
 import json
 import os
 from contextlib import asynccontextmanager
+from typing import Optional
 
 import anthropic
 from dotenv import load_dotenv
@@ -338,7 +339,7 @@ class DriveTestRequest(BaseModel):
 
 
 class DriveImportRequest(BaseModel):
-    folder_id: str | None = None
+    folder_id: Optional[str] = None
     auto_scan: bool = True
 
 
@@ -353,10 +354,10 @@ class GeneratePdfRequest(BaseModel):
     subtitle: str
     headers: list[str]
     rows: list[list[str]]
-    footer_row: list[str] | None = None
+    footer_row: Optional[list] = None
     filename: str = "report.pdf"
     upload_to_drive: bool = False
-    accent_color: str | None = None  # hex color for header/footer, default purple
+    accent_color: Optional[str] = None  # hex color for header/footer, default purple
 
 
 @app.get("/api/drive/folders")
@@ -522,8 +523,8 @@ async def import_from_drive(req: DriveImportRequest):
 
 
 def _generate_pdf(title: str, subtitle: str, headers: list[str],
-                   rows: list[list[str]], footer_row: list[str] | None = None,
-                   accent_color: str | None = None) -> bytes:
+                   rows: list[list[str]], footer_row: Optional[list] = None,
+                   accent_color: Optional[str] = None) -> bytes:
     """Generate a card-style PDF report. Title band is the first table row for perfect alignment."""
     import io
     import datetime
@@ -738,15 +739,15 @@ from email.mime.application import MIMEApplication
 
 
 class EmailTestRequest(BaseModel):
-    to: str | None = None
+    to: Optional[str] = None
 
 
 class SendEmailRequest(BaseModel):
     to: list[str]
     subject: str
     html_body: str
-    attachment_base64: str | None = None
-    attachment_filename: str | None = None
+    attachment_base64: Optional[str] = None
+    attachment_filename: Optional[str] = None
     attachment_mime: str = "application/pdf"
 
 
