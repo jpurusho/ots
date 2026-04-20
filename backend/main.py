@@ -594,8 +594,8 @@ def _generate_pdf(title: str, subtitle: str, headers: list[str],
     if footer_row:
         table_data.append(make_row(footer_row, is_footer=True))
 
-    # Column widths
-    amt_width = avail_width * 0.12
+    # Column widths — 13.5% gives enough room for amounts like "$15,970.00" in bold
+    amt_width = avail_width * 0.135
     col_widths = []
     for i in range(num_cols):
         col_widths.append(amt_width if i in amount_cols else None)
@@ -688,6 +688,123 @@ async def generate_pdf(req: GeneratePdfRequest):
         return result
     except Exception as e:
         raise HTTPException(500, f"PDF generation failed: {e}")
+
+
+class CardsPdfRequest(BaseModel):
+    title: str
+    period: str
+    cards: list  # [{date: str, rows: [[label, amount]], total: str}]
+    accent_color: Optional[str] = None
+
+
+def _generate_cards_pdf(title: str, period: str, cards: list, accent_color: Optional[str] = None) -> bytes:
+    """Generate a card-style PDF with 2 offering cards per row."""
+    import io
+    import datetime
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepTogether
+    from reportlab.lib.styles import ParagraphStyle
+    from xml.sax.saxutils import escape
+
+    accent = colors.HexColor(accent_color or '#4f46e5')
+    margin = 0.5 * inch
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter,
+                            topMargin=margin, bottomMargin=margin,
+                            leftMargin=margin, rightMargin=margin)
+    avail_w = letter[0] - 2 * margin
+
+    pg_title  = ParagraphStyle('PT', fontName='Helvetica-Bold', fontSize=14, textColor=accent, leading=18)
+    pg_sub    = ParagraphStyle('PS', fontName='Helvetica', fontSize=9, textColor=colors.HexColor('#64748b'), leading=12)
+    hdr_name  = ParagraphStyle('HN', fontName='Helvetica-Bold', fontSize=10, textColor=colors.white, leading=13)
+    hdr_date  = ParagraphStyle('HD', fontName='Helvetica', fontSize=8, textColor=colors.Color(1, 1, 1, 0.85), leading=10)
+    cat_lbl   = ParagraphStyle('CL', fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor('#6b7280'), leading=11)
+    cat_amt   = ParagraphStyle('CA', fontName='Helvetica-Bold', fontSize=8.5, alignment=2, textColor=colors.HexColor('#111827'), leading=11)
+    tot_lbl   = ParagraphStyle('TL', fontName='Helvetica-Bold', fontSize=9.5, textColor=accent, leading=12)
+    tot_amt   = ParagraphStyle('TA', fontName='Helvetica-Bold', fontSize=9.5, alignment=2, textColor=accent, leading=12)
+    gen_style = ParagraphStyle('GF', fontSize=7.5, textColor=colors.HexColor('#94a3b8'))
+
+    gap = 10  # pts between card columns
+    card_w = (avail_w - gap) / 2
+    lbl_w = card_w * 0.60
+    amt_w = card_w * 0.40
+
+    def make_card(card: dict) -> Table:
+        date_str = str(card.get('date', ''))
+        cat_rows = card.get('rows', [])
+        total_str = str(card.get('total', ''))
+
+        data: list = [
+            [[Paragraph(escape(title), hdr_name), Paragraph('Week of ' + escape(date_str), hdr_date)], ''],
+        ]
+        for row in cat_rows:
+            data.append([Paragraph(escape(str(row[0])), cat_lbl), Paragraph(escape(str(row[1])), cat_amt)])
+        data.append([Paragraph('Total', tot_lbl), Paragraph(escape(total_str), tot_amt)])
+
+        n = len(data)
+        cmds = [
+            ('SPAN', (0, 0), (-1, 0)),
+            ('BACKGROUND', (0, 0), (-1, 0), accent),
+            ('TOPPADDING', (0, 0), (-1, 0), 10), ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+            ('LEFTPADDING', (0, 0), (-1, 0), 12), ('RIGHTPADDING', (0, 0), (-1, 0), 12),
+            ('LEFTPADDING', (0, n - 1), (-1, n - 1), 12), ('RIGHTPADDING', (0, n - 1), (-1, n - 1), 12),
+            ('TOPPADDING', (0, n - 1), (-1, n - 1), 8), ('BOTTOMPADDING', (0, n - 1), (-1, n - 1), 8),
+            ('LINEABOVE', (0, n - 1), (-1, n - 1), 1.5, accent),
+            ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#e2e8f0')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]
+        if n > 2:
+            cmds += [
+                ('LEFTPADDING', (0, 1), (-1, n - 2), 12), ('RIGHTPADDING', (0, 1), (-1, n - 2), 12),
+                ('TOPPADDING', (0, 1), (-1, n - 2), 5), ('BOTTOMPADDING', (0, 1), (-1, n - 2), 5),
+            ]
+            for r in range(1, n - 2):
+                cmds.append(('LINEBELOW', (0, r), (-1, r), 0.5, colors.HexColor('#e5e7eb')))
+        t = Table(data, colWidths=[lbl_w, amt_w])
+        t.setStyle(TableStyle(cmds))
+        return t
+
+    elements: list = [
+        Paragraph(escape(title), pg_title),
+        Paragraph(escape(period) + ' — Offering Cards', pg_sub),
+        Spacer(1, 14),
+    ]
+    i = 0
+    while i < len(cards):
+        c1 = make_card(cards[i])
+        c2 = make_card(cards[i + 1]) if i + 1 < len(cards) else ''
+        row_t = Table([[c1, c2]], colWidths=[card_w, card_w])
+        row_t.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (0, -1), gap), ('RIGHTPADDING', (1, 0), (1, -1), 0),
+            ('TOPPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), gap),
+        ]))
+        elements.append(KeepTogether(row_t))
+        i += 2
+
+    elements.append(Spacer(1, 8))
+    elements.append(Paragraph(f'Generated by OTS on {datetime.date.today().strftime("%m/%d/%Y")}', gen_style))
+    doc.build(elements)
+    return buf.getvalue()
+
+
+@app.post("/api/pdf/generate-cards")
+async def generate_cards_pdf(req: CardsPdfRequest):
+    """Generate a PDF with offering cards (2 per row, portrait letter)."""
+    try:
+        pdf_bytes = _generate_cards_pdf(req.title, req.period, req.cards, req.accent_color)
+        slug = req.period.replace(' ', '_').replace('/', '-')
+        return {
+            "success": True,
+            "pdf_base64": base64.b64encode(pdf_bytes).decode(),
+            "filename": f"OTS_Cards_{slug}.pdf",
+            "size": len(pdf_bytes),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cards PDF failed: {e}")
 
 
 @app.post("/api/drive/upload-report")

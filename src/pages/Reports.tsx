@@ -8,7 +8,7 @@ import {
   ExternalLink, Share2, ChevronDown, ChevronUp, ArrowUpDown, Search,
   CalendarRange, CloudUpload, Mail,
 } from 'lucide-react'
-import { generateAndDownloadPdf } from '@/lib/pdf-utils'
+import { generateAndDownloadPdf, generateAndUploadPdf } from '@/lib/pdf-utils'
 import { useAccentColors } from '@/lib/accent-colors'
 
 
@@ -29,6 +29,16 @@ interface ApprovedOffering {
 type SortKey = 'offering_date' | 'general' | 'cash' | 'sunday_school' | 'building_fund' | 'misc' | 'total'
 type SortDir = 'asc' | 'desc'
 type ViewMode = 'monthly' | 'yearly' | 'range'
+
+type Category = 'general' | 'cash' | 'sunday_school' | 'building_fund' | 'misc'
+
+const ALL_CATS: { key: Category; label: string }[] = [
+  { key: 'general', label: 'General' },
+  { key: 'cash', label: 'Cash' },
+  { key: 'sunday_school', label: 'Sunday School' },
+  { key: 'building_fund', label: 'Building Fund' },
+  { key: 'misc', label: 'Miscellaneous' },
+]
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
@@ -63,62 +73,47 @@ const fmt = (n: number) => n > 0 ? `$${n.toFixed(2)}` : '—'
 const rowTotal = (o: ApprovedOffering) =>
   (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
 
-// Open HTML in new window (no auto-print — user can Cmd+P when ready)
-// Email-safe card using tables instead of flexbox (Gmail/Outlook compatible)
-function buildEmailCard(churchName: string, o: ApprovedOffering, accent = '#4f46e5'): string {
-  const t = rowTotal(o)
+// Email-safe card using tables (Gmail/Outlook compatible), styled to match app card view.
+function buildEmailCard(
+  churchName: string,
+  o: ApprovedOffering,
+  catList: { key: Category; label: string }[],
+  accent = '#4f46e5'
+): string {
+  const t = catList.reduce((sum, c) => sum + ((o as any)[c.key] || 0), 0)
   const row = (label: string, amount: number) =>
-    '<tr><td style="padding:8px 20px;font-size:14px;color:#374151;border-bottom:1px solid #f1f5f9">' + label + '</td>' +
-    '<td style="padding:8px 20px;font-size:14px;text-align:right;border-bottom:1px solid #f1f5f9;font-weight:500">$' + amount.toFixed(2) + '</td></tr>'
+    '<tr>' +
+      '<td style="padding:9px 20px;font-size:13px;color:#6b7280;border-bottom:1px solid #f1f5f9">' + label + '</td>' +
+      '<td style="padding:9px 20px;font-size:13px;text-align:right;border-bottom:1px solid #f1f5f9;font-weight:600;color:#111827">$' + amount.toFixed(2) + '</td>' +
+    '</tr>'
 
   let rows = ''
-  if (o.general > 0) rows += row('General (Checks)', o.general)
-  if (o.cash > 0) rows += row('Cash (Denominations)', o.cash)
-  if (o.sunday_school > 0) rows += row('Sunday School', o.sunday_school)
-  if (o.building_fund > 0) rows += row('Building Fund', o.building_fund)
-  if (o.misc > 0) rows += row('Miscellaneous', o.misc)
+  for (const cat of catList) {
+    if ((o as any)[cat.key] > 0) rows += row(cat.label, (o as any)[cat.key])
+  }
 
-  return '<div style="max-width:420px;margin:0 auto;font-family:system-ui,-apple-system,sans-serif">' +
-    '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">' +
-      '<tr><td style="background:' + accent + ';padding:16px 20px">' +
-        '<p style="margin:0;font-size:16px;font-weight:600;color:#ffffff">' + churchName + '</p>' +
-        '<p style="margin:4px 0 0;font-size:12px;color:rgba(255,255,255,0.8)">Week of ' + formatDate(o.offering_date) + '</p>' +
+  return (
+    '<div style="max-width:400px;margin:0 auto;font-family:system-ui,-apple-system,sans-serif">' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.07)">' +
+      '<tr><td style="background:' + accent + ';padding:14px 20px 12px">' +
+        '<div style="font-size:15px;font-weight:700;color:#ffffff;line-height:1.3">' + churchName + '</div>' +
+        '<div style="font-size:11px;color:rgba(255,255,255,0.82);margin-top:3px">Week of ' + formatDate(o.offering_date) + '</div>' +
       '</td></tr>' +
-      '<tr><td style="padding:0">' +
+      '<tr><td style="padding:0;background:#ffffff">' +
         '<table width="100%" cellpadding="0" cellspacing="0">' +
           rows +
-          '<tr style="border-top:2px solid ' + accent + '">' +
-            '<td style="padding:12px 20px;font-size:16px;font-weight:bold;color:' + accent + '">Total</td>' +
-            '<td style="padding:12px 20px;font-size:16px;font-weight:bold;color:' + accent + ';text-align:right">$' + t.toFixed(2) + '</td>' +
+          '<tr>' +
+            '<td style="padding:12px 20px;font-size:14px;font-weight:700;color:' + accent + ';border-top:2px solid ' + accent + '">Total</td>' +
+            '<td style="padding:12px 20px;font-size:14px;font-weight:700;color:' + accent + ';text-align:right;border-top:2px solid ' + accent + '">$' + t.toFixed(2) + '</td>' +
           '</tr>' +
         '</table>' +
       '</td></tr>' +
     '</table>' +
-    '<p style="margin:12px 0 0;font-size:10px;color:#94a3b8;text-align:center">Generated by OTS on ' + new Date().toLocaleDateString() + '</p>' +
-  '</div>'
+    '<p style="margin:10px 0 0;font-size:10px;color:#94a3b8;text-align:center">Generated by OTS · ' + new Date().toLocaleDateString() + '</p>' +
+    '</div>'
+  )
 }
 
-function buildReportTable(offerings: ApprovedOffering[], grandTotal: Record<string, number>, grandTotalSum: number): string {
-  const rows = offerings.map(o => `<tr>
-    <td class="left">${formatDate(o.offering_date)}</td>
-    <td class="right">${fmt(o.general)}</td><td class="right">${fmt(o.cash)}</td>
-    <td class="right">${fmt(o.sunday_school)}</td><td class="right">${fmt(o.building_fund)}</td>
-    <td class="right">${fmt(o.misc)}</td>
-    <td class="right"><strong>$${rowTotal(o).toFixed(2)}</strong></td>
-  </tr>`).join('')
-
-  return `<table><thead><tr>
-    <th class="left">Date</th><th class="right">General</th><th class="right">Cash</th>
-    <th class="right">Sunday School</th><th class="right">Building Fund</th>
-    <th class="right">Misc</th><th class="right">Total</th>
-  </tr></thead><tbody>${rows}</tbody><tfoot><tr>
-    <td class="left"><strong>Total</strong></td>
-    <td class="right">$${grandTotal.general.toFixed(2)}</td><td class="right">$${grandTotal.cash.toFixed(2)}</td>
-    <td class="right">$${grandTotal.sunday_school.toFixed(2)}</td><td class="right">$${grandTotal.building_fund.toFixed(2)}</td>
-    <td class="right">$${grandTotal.misc.toFixed(2)}</td>
-    <td class="right"><strong>$${grandTotalSum.toFixed(2)}</strong></td>
-  </tr></tfoot></table>`
-}
 
 function MonthCalendar({ year, month, offerings, missingSundays, onSelectDate }: {
   year: number
@@ -238,6 +233,31 @@ export function ReportsPage() {
   const [emailRecipients, setEmailRecipients] = useState('')
   const [showMissing, setShowMissing] = useState(true)
   const [displayMode, setDisplayMode] = useState<'table' | 'cards'>('table')
+
+  const [selectedCats, setSelectedCats] = useState<Set<Category>>(() => {
+    try {
+      const saved = localStorage.getItem('ots:report_categories')
+      if (saved) {
+        const parsed = JSON.parse(saved) as Category[]
+        if (Array.isArray(parsed) && parsed.length > 0) return new Set(parsed)
+      }
+    } catch { /* ignore */ }
+    return new Set<Category>(['general', 'cash', 'sunday_school', 'building_fund', 'misc'])
+  })
+  type DriveStatus = null | 'uploading' | { name: string; link: string } | { error: string }
+  const [driveStatus, setDriveStatus] = useState<DriveStatus>(null)
+  const [cardsExporting, setCardsExporting] = useState(false)
+
+  const toggleCat = (cat: Category) => {
+    setSelectedCats(prev => {
+      if (prev.size === 1 && prev.has(cat)) return prev // keep at least one selected
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      localStorage.setItem('ots:report_categories', JSON.stringify([...next]))
+      return next
+    })
+  }
 
   const { data: churchName } = useQuery({
     queryKey: ['settings', 'church_name'],
@@ -367,6 +387,18 @@ export function ReportsPage() {
   const grandTotalSum = grandTotal.general + grandTotal.cash + grandTotal.sunday_school +
     grandTotal.building_fund + grandTotal.misc
 
+  // Derived export values — respect selectedCats (display always shows all)
+  const catList = ALL_CATS.filter(c => selectedCats.has(c.key))
+  const filteredRowTotal = (o: ApprovedOffering) =>
+    catList.reduce((sum, c) => sum + ((o as any)[c.key] || 0), 0)
+  const filteredGrandTotal = catList.reduce((acc, c) => ({
+    ...acc, [c.key]: offerings.reduce((sum, o) => sum + ((o as any)[c.key] || 0), 0),
+  }), {} as Record<string, number>)
+  const filteredGrandTotalSum = catList.reduce((sum, c) => sum + (filteredGrandTotal[c.key] || 0), 0)
+
+  // Reset drive status when period changes
+  useEffect(() => { setDriveStatus(null) }, [viewMode, month, year, dateFrom, dateTo])
+
   const periodLabel = viewMode === 'monthly'
     ? `${MONTHS[month]} ${year}`
     : viewMode === 'yearly'
@@ -382,13 +414,86 @@ export function ReportsPage() {
       await generateAndDownloadPdf({
         title,
         subtitle: periodLabel,
-        headers: ['Date', 'General', 'Cash', 'Sunday School', 'Building Fund', 'Misc', 'Total'],
-        rows: offerings.map(o => [formatDate(o.offering_date), fmt(o.general), fmt(o.cash), fmt(o.sunday_school), fmt(o.building_fund), fmt(o.misc), '$' + rowTotal(o).toFixed(2)]),
-        footer_row: ['Total', '$' + grandTotal.general.toFixed(2), '$' + grandTotal.cash.toFixed(2), '$' + grandTotal.sunday_school.toFixed(2), '$' + grandTotal.building_fund.toFixed(2), '$' + grandTotal.misc.toFixed(2), '$' + grandTotalSum.toFixed(2)],
+        headers: ['Date', ...catList.map(c => c.label), 'Total'],
+        rows: offerings.map(o => [
+          formatDate(o.offering_date),
+          ...catList.map(c => fmt((o as any)[c.key])),
+          '$' + filteredRowTotal(o).toFixed(2),
+        ]),
+        footer_row: [
+          'Total',
+          ...catList.map(c => '$' + (filteredGrandTotal[c.key] || 0).toFixed(2)),
+          '$' + filteredGrandTotalSum.toFixed(2),
+        ],
         accent_color: accentColors.report || '#16a34a',
         filename: 'ots_report_' + periodLabel.replace(/\s+/g, '_').toLowerCase() + '_' + today + '.pdf',
       })
     } catch (err) { alert(err instanceof Error ? err.message : 'PDF failed') }
+  }
+
+  const handleDriveUpload = async () => {
+    setDriveStatus('uploading')
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const data = await generateAndUploadPdf({
+        title,
+        subtitle: periodLabel,
+        headers: ['Date', ...catList.map(c => c.label), 'Total'],
+        rows: offerings.map(o => [
+          formatDate(o.offering_date),
+          ...catList.map(c => fmt((o as any)[c.key])),
+          '$' + filteredRowTotal(o).toFixed(2),
+        ]),
+        footer_row: [
+          'Total',
+          ...catList.map(c => '$' + (filteredGrandTotal[c.key] || 0).toFixed(2)),
+          '$' + filteredGrandTotalSum.toFixed(2),
+        ],
+        accent_color: accentColors.report || '#16a34a',
+        filename: 'OTS_Report_' + periodLabel.replace(/\s+/g, '_') + '_' + today + '.pdf',
+      })
+      if (data.drive) setDriveStatus({ name: data.drive.name, link: data.drive.link })
+      else setDriveStatus({ error: data.drive_error || 'Drive not configured' })
+    } catch (err) {
+      setDriveStatus({ error: err instanceof Error ? err.message : 'Upload failed' })
+    }
+  }
+
+  const exportCardsAsPdf = async (singleOffering?: ApprovedOffering) => {
+    setCardsExporting(true)
+    try {
+      const targets = singleOffering ? [singleOffering] : offerings
+      const cards = targets.map(o => ({
+        date: formatDate(o.offering_date),
+        rows: catList
+          .filter(c => (o as any)[c.key] > 0)
+          .map(c => [c.label, '$' + (o as any)[c.key].toFixed(2)]),
+        total: '$' + filteredRowTotal(o).toFixed(2),
+      }))
+      const resp = await fetch((await getBackendUrl()) + '/api/pdf/generate-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          period: singleOffering
+            ? 'Week of ' + formatDate(singleOffering.offering_date)
+            : periodLabel,
+          cards,
+          accent_color: accentColors.card || accentColors.report || '#16a34a',
+        }),
+      })
+      const data = await resp.json()
+      if (!data.success) throw new Error(data.detail || 'Failed')
+      const blob = new Blob([Uint8Array.from(atob(data.pdf_base64), c => c.charCodeAt(0))], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = data.filename; a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Cards PDF failed')
+    } finally {
+      setCardsExporting(false)
+    }
   }
 
   // Initialize email recipients from defaults when target changes
@@ -420,38 +525,55 @@ export function ReportsPage() {
 
   const buildEmailReportHtml = () => {
     const rc = accentColors.report || '#16a34a'
+    const numCols = catList.length + 2
+    const datePct = 20
+    const otherPct = Math.floor((100 - datePct) / (numCols - 1))
     const thStyle = 'padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1'
     const tdStyle = 'padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb'
     const ftStyle = 'padding:10px 12px;text-align:right;font-weight:bold'
     const rows = offerings.map((o, i) => {
       const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc'
       return '<tr style="background:' + bg + '"><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">' + formatDate(o.offering_date) + '</td>' +
-        '<td style="' + tdStyle + '">' + fmt(o.general) + '</td><td style="' + tdStyle + '">' + fmt(o.cash) + '</td>' +
-        '<td style="' + tdStyle + '">' + fmt(o.sunday_school) + '</td><td style="' + tdStyle + '">' + fmt(o.building_fund) + '</td>' +
-        '<td style="' + tdStyle + '">' + fmt(o.misc) + '</td><td style="' + tdStyle + ';font-weight:bold">$' + rowTotal(o).toFixed(2) + '</td></tr>'
+        catList.map(c => '<td style="' + tdStyle + '">' + fmt((o as any)[c.key]) + '</td>').join('') +
+        '<td style="' + tdStyle + ';font-weight:bold">$' + filteredRowTotal(o).toFixed(2) + '</td></tr>'
     }).join('')
+    const colgroup = '<colgroup><col style="width:' + datePct + '%"/>' +
+      catList.map(() => '<col style="width:' + otherPct + '%"/>').join('') +
+      '<col style="width:' + otherPct + '%"/></colgroup>'
+    const headerCells = '<th style="' + thStyle + ';text-align:left">Date</th>' +
+      catList.map(c => '<th style="' + thStyle + '">' + c.label + '</th>').join('') +
+      '<th style="' + thStyle + '">Total</th>'
+    const footerCells = '<td style="' + ftStyle + ';text-align:left">Total</td>' +
+      catList.map(c => '<td style="' + ftStyle + '">$' + (filteredGrandTotal[c.key] || 0).toFixed(2) + '</td>').join('') +
+      '<td style="' + ftStyle + '">$' + filteredGrandTotalSum.toFixed(2) + '</td>'
     return '<div style="font-family:system-ui,sans-serif;max-width:700px;margin:0 auto;color:#1a1a2e">' +
-      '<div style="background:' + rc + ';color:white;padding:20px 24px;border-radius:8px 8px 0 0"><h1 style="margin:0;font-size:18px">' + title + '</h1><p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + '</p></div>' +
+      '<div style="background:' + rc + ';color:white;padding:20px 24px;border-radius:8px 8px 0 0">' +
+        '<h1 style="margin:0;font-size:18px">' + title + '</h1>' +
+        '<p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + '</p>' +
+      '</div>' +
       '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">' +
       '<table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">' +
-      '<colgroup><col style="width:22%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/><col style="width:13%"/></colgroup>' +
-      '<thead><tr style="background:#f1f5f9">' +
-      '<th style="' + thStyle + ';text-align:left">Date</th><th style="' + thStyle + '">General</th><th style="' + thStyle + '">Cash</th><th style="' + thStyle + '">Sunday School</th><th style="' + thStyle + '">Building Fund</th><th style="' + thStyle + '">Misc</th><th style="' + thStyle + '">Total</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody><tfoot><tr style="background:' + rc + ';color:white">' +
-      '<td style="' + ftStyle + ';text-align:left">Total</td><td style="' + ftStyle + '">$' + grandTotal.general.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.cash.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.sunday_school.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.building_fund.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotal.misc.toFixed(2) + '</td><td style="' + ftStyle + '">$' + grandTotalSum.toFixed(2) + '</td>' +
-      '</tr></tfoot></table></div><p style="margin-top:16px;font-size:10px;color:#94a3b8;text-align:center">Generated by OTS</p></div>'
+      colgroup +
+      '<thead><tr style="background:#f1f5f9">' + headerCells + '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '<tfoot><tr style="background:' + rc + ';color:white">' + footerCells + '</tr></tfoot>' +
+      '</table></div>' +
+      '<p style="margin-top:16px;font-size:10px;color:#94a3b8;text-align:center">Generated by OTS</p></div>'
   }
 
   const exportCsv = () => {
-    const headers = 'Date,General,Cash,Sunday School,Building Fund,Miscellaneous,Total\n'
+    const hdrs = 'Date,' + catList.map(c => c.label).join(',') + ',Total\n'
     const rows = offerings.map(o =>
-      `${o.offering_date || ''},${o.general},${o.cash},${o.sunday_school},${o.building_fund},${o.misc},${rowTotal(o)}`
+      `${o.offering_date || ''},${catList.map(c => (o as any)[c.key]).join(',')},${filteredRowTotal(o)}`
     ).join('\n')
-    const totalsRow = `Total,${grandTotal.general},${grandTotal.cash},${grandTotal.sunday_school},${grandTotal.building_fund},${grandTotal.misc},${grandTotalSum}`
-    const blob = new Blob([headers + rows + '\n' + totalsRow], { type: 'text/csv' })
+    const totalsRow = `Total,${catList.map(c => filteredGrandTotal[c.key] || 0).join(',')},${filteredGrandTotalSum}`
+    const blob = new Blob([hdrs + rows + '\n' + totalsRow], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = `offerings_${periodLabel.replace(/\s+/g, '_').toLowerCase()}.csv`
-    a.click(); URL.revokeObjectURL(url)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `offerings_${periodLabel.replace(/\s+/g, '_').toLowerCase()}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -588,6 +710,30 @@ export function ReportsPage() {
             ) : null
           })()}
 
+          {/* Category selector — persisted, affects all exports */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted">Export:</span>
+            {ALL_CATS.map(c => (
+              <button key={c.key} onClick={() => toggleCat(c.key)}
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer ${
+                  selectedCats.has(c.key)
+                    ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                    : 'border-border text-muted hover:text-foreground'
+                }`}>
+                {c.label}
+              </button>
+            ))}
+            {selectedCats.size < 5 && (
+              <button onClick={() => {
+                const all = new Set<Category>(['general', 'cash', 'sunday_school', 'building_fund', 'misc'])
+                setSelectedCats(all)
+                localStorage.setItem('ots:report_categories', JSON.stringify([...all]))
+              }} className="text-[10px] text-muted hover:text-foreground cursor-pointer underline">
+                All
+              </button>
+            )}
+          </div>
+
           {/* Filter + Export bar */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="relative flex-1 max-w-xs">
@@ -611,47 +757,28 @@ export function ReportsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
                 <Download className="w-3.5 h-3.5" /> CSV
               </button>
-              <button onClick={async () => {
-                  // Build full styled HTML document for PDF conversion
-                  const rc = accentColors.report || '#16a34a'
-                  const tableHtml = buildReportTable(offerings, grandTotal, grandTotalSum)
-                  const fullHtml = '<!DOCTYPE html><html><head><style>' +
-                    'body{font-family:system-ui,sans-serif;margin:30px;color:#1a1a2e}' +
-                    'h1{font-size:18px;margin:0 0 4px;color:' + rc + '}' +
-                    'h2{font-size:13px;color:#64748b;font-weight:normal;margin:0 0 20px}' +
-                    'table{width:100%;border-collapse:collapse;font-size:12px}' +
-                    'th{padding:8px 10px;text-align:right;font-size:10px;text-transform:uppercase;color:#64748b;border-bottom:2px solid ' + rc + ';background:#f1f5f9}' +
-                    'th:first-child{text-align:left}' +
-                    'td{padding:6px 10px;text-align:right;border-bottom:1px solid #e5e7eb}' +
-                    'td:first-child{text-align:left}' +
-                    'tr:nth-child(even){background:#f8fafc}' +
-                    'tfoot tr{background:' + rc + ';color:white}' +
-                    'tfoot td{font-weight:bold;border:none;padding:8px 10px}' +
-                    '.footer{margin-top:20px;font-size:9px;color:#94a3b8}' +
-                    '</style></head><body>' +
-                    '<h1>' + title + '</h1>' +
-                    '<h2>' + periodLabel + '</h2>' +
-                    tableHtml +
-                    '<p class="footer">Generated by OTS on ' + new Date().toLocaleDateString() + '</p>' +
-                    '</body></html>'
-                  try {
-                    const resp = await fetch((await getBackendUrl()) + '/api/drive/upload-report', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        filename: 'OTS_Report_' + periodLabel.replace(/\s+/g, '_') + '.pdf',
-                        content_base64: btoa(unescape(encodeURIComponent(fullHtml))),
-                        mime_type: 'text/html',
-                      }),
-                    })
-                    const data = await resp.json()
-                    if (data.success) alert('PDF report uploaded to Drive: ' + data.name)
-                    else alert(data.detail || data.error || 'Upload failed')
-                  } catch (err) { alert(err instanceof Error ? err.message : 'Failed') }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer">
-                <CloudUpload className="w-3.5 h-3.5" /> Drive
+              <button onClick={() => exportCardsAsPdf()} disabled={cardsExporting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer disabled:opacity-60">
+                {cardsExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
+                Cards PDF
               </button>
+              <div className="flex items-center gap-1.5">
+                <button onClick={handleDriveUpload} disabled={driveStatus === 'uploading'}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer disabled:opacity-60">
+                  {driveStatus === 'uploading'
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</>
+                    : <><CloudUpload className="w-3.5 h-3.5" /> Drive</>}
+                </button>
+                {driveStatus && driveStatus !== 'uploading' && (
+                  'name' in driveStatus
+                    ? <a href={(driveStatus as { name: string; link: string }).link} target="_blank" rel="noreferrer"
+                        className="flex items-center gap-0.5 text-xs text-success hover:underline">
+                        <ExternalLink className="w-3 h-3" />
+                        {(driveStatus as { name: string; link: string }).name}
+                      </a>
+                    : <span className="text-xs text-destructive">{(driveStatus as { error: string }).error}</span>
+                )}
+              </div>
               <button onClick={() => setEmailTarget(emailTarget?.type === 'report' ? null : { type: 'report' })}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer ${
                   emailTarget?.type === 'report' ? 'bg-primary text-primary-foreground' : 'border border-border hover:bg-muted-foreground/10'
@@ -676,7 +803,7 @@ export function ReportsPage() {
                     if (emailTarget.type === 'report') {
                       sendEmail(title + ' — ' + periodLabel, buildEmailReportHtml())
                     } else if (o) {
-                      sendEmail(title + ' — Week of ' + formatDate(o.offering_date), buildEmailCard(title, o, accentColors.card))
+                      sendEmail(title + ' — Week of ' + formatDate(o.offering_date), buildEmailCard(title, o, catList, accentColors.card))
                     }
                   }}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
@@ -759,6 +886,10 @@ export function ReportsPage() {
                         <button onClick={() => navigate(`/review?id=${o.id}`)}
                           className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
                           <ExternalLink className="w-3 h-3" /> Review
+                        </button>
+                        <button onClick={() => exportCardsAsPdf(o)} disabled={cardsExporting}
+                          className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
+                          <Download className="w-3 h-3" /> PDF
                         </button>
                         <button onClick={() => setEmailTarget(emailTarget?.offering?.id === o.id ? null : { type: 'card', offering: o })}
                           className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
@@ -869,6 +1000,10 @@ export function ReportsPage() {
                                   <button onClick={e => { e.stopPropagation(); navigate(`/review?id=${o.id}`) }}
                                     className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
                                     <ExternalLink className="w-3 h-3" /> View
+                                  </button>
+                                  <button onClick={e => { e.stopPropagation(); exportCardsAsPdf(o) }} disabled={cardsExporting}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
+                                    <Download className="w-3 h-3" /> PDF Card
                                   </button>
                                   <button onClick={e => { e.stopPropagation(); setEmailTarget(emailTarget?.offering?.id === o.id ? null : { type: 'card', offering: o }) }}
                                     className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
