@@ -21,6 +21,7 @@ export function AboutPage() {
   const [downloading, setDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [downloadDone, setDownloadDone] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isElectron) return
@@ -51,12 +52,16 @@ export function AboutPage() {
     setDownloading(true)
     setDownloadProgress(0)
     setDownloadDone(false)
+    setDownloadError(null)
     try {
       const zipUrl = `https://github.com/jpurusho/ots/releases/download/v${updateInfo.version}/OTS-${updateInfo.version}-arm64-mac.zip`
       await getElectronAPI()?.update.download(zipUrl)
       setDownloadDone(true)
-    } catch { /* */ }
-    finally { setDownloading(false) }
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Download failed')
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
@@ -138,6 +143,9 @@ export function AboutPage() {
                   <div className="h-2 bg-border rounded-full overflow-hidden">
                     <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${downloadProgress}%` }} />
                   </div>
+                )}
+                {downloadError && (
+                  <p className="text-sm text-destructive">{downloadError}</p>
                 )}
               </>
             )}
