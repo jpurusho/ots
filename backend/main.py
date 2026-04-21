@@ -544,29 +544,31 @@ DEFAULT_FILENAME_TEMPLATES = {
 
 
 def _resolve_filename(template_key: str, period: str) -> str:
-    """Resolve a filename template from app_settings, substituting context variables."""
+    """Resolve a filename template from app_settings, substituting context variables.
+    Only {church}, {period}, {date}, {year}, {month} are substituted.
+    Any other {text} has its braces stripped and the content kept literally,
+    so users can write e.g. {CCI} as a literal prefix without it being treated
+    as a variable."""
     import re
     import datetime
     template = _get_setting(template_key) or DEFAULT_FILENAME_TEMPLATES[template_key]
     church = re.sub(r'\s+', '_', (_get_setting('church_name') or 'OTS').strip())
-    church = re.sub(r'[^\w\-]', '', church)  # strip non-word chars except hyphens
+    church = re.sub(r'[^\w\-]', '', church)
     today = datetime.date.today()
     period_slug = re.sub(r'[^\w]', '_', period.strip())
     period_slug = re.sub(r'_+', '_', period_slug).strip('_')
-    try:
-        name = template.format(
-            church=church,
-            period=period_slug,
-            date=today.strftime('%Y-%m-%d'),
-            year=today.year,
-            month=today.strftime('%B'),
-        )
-    except (KeyError, IndexError, ValueError):
-        # Bad template — fall back to default
-        name = DEFAULT_FILENAME_TEMPLATES[template_key].format(
-            church=church, period=period_slug,
-            date=today.strftime('%Y-%m-%d'), year=today.year, month=today.strftime('%B'),
-        )
+
+    context = {
+        'church': church,
+        'period': period_slug,
+        'date': today.strftime('%Y-%m-%d'),
+        'year': str(today.year),
+        'month': today.strftime('%B'),
+    }
+
+    # Safe substitution: replace known vars, strip braces from unknown ones
+    name = re.sub(r'\{([^}]*)\}', lambda m: context.get(m.group(1), m.group(1)), template)
+
     # Strip chars not valid in filenames
     name = re.sub(r'[<>:"/\\|?*]', '_', name).strip('_')
     if not name.lower().endswith('.pdf'):

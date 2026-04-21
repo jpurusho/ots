@@ -45,12 +45,15 @@ const FILENAME_TEMPLATE_VARS = ['{church}', '{period}', '{date}', '{year}', '{mo
 function resolveFilenamePreview(template: string, churchName: string): string {
   const today = new Date()
   const church = (churchName || 'Church').replace(/\s+/g, '_').replace(/[^\w\-]/g, '')
-  const name = template
-    .replace(/\{church\}/g, church)
-    .replace(/\{period\}/g, 'April_2026')
-    .replace(/\{date\}/g, today.toISOString().split('T')[0])
-    .replace(/\{year\}/g, String(today.getFullYear()))
-    .replace(/\{month\}/g, today.toLocaleString('default', { month: 'long' }))
+  const context: Record<string, string> = {
+    church,
+    period: 'April_2026',
+    date: today.toISOString().split('T')[0],
+    year: String(today.getFullYear()),
+    month: today.toLocaleString('default', { month: 'long' }),
+  }
+  // Safe substitution: known vars → value, unknown {text} → text (braces stripped)
+  const name = template.replace(/\{([^}]*)\}/g, (_, key) => context[key] ?? key)
   return name.endsWith('.pdf') ? name : name + '.pdf'
 }
 
