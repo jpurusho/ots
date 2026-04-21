@@ -247,6 +247,7 @@ export function ReportsPage() {
   type DriveStatus = null | 'uploading' | { name: string; link: string } | { error: string }
   const [driveStatus, setDriveStatus] = useState<DriveStatus>(null)
   const [cardsExporting, setCardsExporting] = useState(false)
+  const [cardDriveStatus, setCardDriveStatus] = useState<Record<number, DriveStatus>>({})
 
   const toggleCat = (cat: Category) => {
     setSelectedCats(prev => {
@@ -493,6 +494,36 @@ export function ReportsPage() {
       alert(err instanceof Error ? err.message : 'Cards PDF failed')
     } finally {
       setCardsExporting(false)
+    }
+  }
+
+  const uploadCardToDrive = async (o: ApprovedOffering) => {
+    setCardDriveStatus(prev => ({ ...prev, [o.id]: 'uploading' }))
+    try {
+      const resp = await fetch((await getBackendUrl()) + '/api/pdf/generate-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          period: 'Week of ' + formatDate(o.offering_date),
+          cards: [{
+            date: formatDate(o.offering_date),
+            rows: catList.filter(c => (o as any)[c.key] > 0).map(c => [c.label, '$' + (o as any)[c.key].toFixed(2)]),
+            total: '$' + filteredRowTotal(o).toFixed(2),
+          }],
+          accent_color: accentColors.card || accentColors.report || '#16a34a',
+          upload_to_drive: true,
+        }),
+      })
+      const data = await resp.json()
+      if (!data.success) throw new Error(data.detail || 'Failed')
+      if (data.drive) {
+        setCardDriveStatus(prev => ({ ...prev, [o.id]: { name: data.drive.name, link: data.drive.link } }))
+      } else {
+        setCardDriveStatus(prev => ({ ...prev, [o.id]: { error: data.drive_error || 'Drive not configured' } }))
+      }
+    } catch (err) {
+      setCardDriveStatus(prev => ({ ...prev, [o.id]: { error: err instanceof Error ? err.message : 'Upload failed' } }))
     }
   }
 
@@ -882,19 +913,40 @@ export function ReportsPage() {
                           <span className="text-primary">${t.toFixed(2)}</span>
                         </div>
                       </div>
-                      <div className="px-4 py-2 border-t border-border flex gap-2">
-                        <button onClick={() => navigate(`/review?id=${o.id}`)}
-                          className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
-                          <ExternalLink className="w-3 h-3" /> Review
-                        </button>
-                        <button onClick={() => exportCardsAsPdf(o)} disabled={cardsExporting}
-                          className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
-                          <Download className="w-3 h-3" /> PDF
-                        </button>
-                        <button onClick={() => setEmailTarget(emailTarget?.offering?.id === o.id ? null : { type: 'card', offering: o })}
-                          className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
-                          <Mail className="w-3 h-3" /> Email
-                        </button>
+                      <div className="px-4 py-2 border-t border-border flex flex-col gap-1.5">
+                        <div className="flex gap-2">
+                          <button onClick={() => navigate(`/review?id=${o.id}`)}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                            <ExternalLink className="w-3 h-3" /> Review
+                          </button>
+                          <button onClick={() => exportCardsAsPdf(o)} disabled={cardsExporting}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
+                            <Download className="w-3 h-3" /> PDF
+                          </button>
+                          <button onClick={() => uploadCardToDrive(o)} disabled={cardDriveStatus[o.id] === 'uploading'}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
+                            {cardDriveStatus[o.id] === 'uploading'
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <CloudUpload className="w-3 h-3" />}
+                            Drive
+                          </button>
+                          <button onClick={() => setEmailTarget(emailTarget?.offering?.id === o.id ? null : { type: 'card', offering: o })}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer">
+                            <Mail className="w-3 h-3" /> Email
+                          </button>
+                        </div>
+                        {cardDriveStatus[o.id] && cardDriveStatus[o.id] !== 'uploading' && (
+                          'name' in (cardDriveStatus[o.id] as object)
+                            ? <a href={(cardDriveStatus[o.id] as { name: string; link: string }).link}
+                                target="_blank" rel="noreferrer"
+                                className="flex items-center gap-1 text-[10px] text-success hover:underline">
+                                <ExternalLink className="w-2.5 h-2.5" />
+                                {(cardDriveStatus[o.id] as { name: string; link: string }).name}
+                              </a>
+                            : <span className="text-[10px] text-destructive">
+                                {(cardDriveStatus[o.id] as { error: string }).error}
+                              </span>
+                        )}
                       </div>
                     </div>
                   )

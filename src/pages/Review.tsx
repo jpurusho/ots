@@ -456,20 +456,31 @@ export function ReviewPage() {
     : null
 
   // For cloud, use signed URL via query
-  const { data: cloudImageUrl } = useQuery({
+  // - gate on appUser so we don't try before auth is restored on launch
+  // - throw errors so React Query can retry (returning null silently prevents retry)
+  // - staleTime 50min: signed URLs last 60min, avoid unnecessary refetches
+  const { data: cloudImageUrl, isFetching: isImageFetching } = useQuery({
     queryKey: ['offering-image-signed', selected?.image_path],
     queryFn: async () => {
       if (!selected?.image_path) return null
       const { data, error } = await supabase.storage
         .from('offering-images')
         .createSignedUrl(selected.image_path, 3600)
-      if (error) return null
+      if (error) throw error
       return data?.signedUrl || null
     },
-    enabled: !!selected?.image_path && !isLocalDev,
+    enabled: !!selected?.image_path && !isLocalDev && !!appUser,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    staleTime: 50 * 60 * 1000,
   })
 
   const imageUrl = isLocalDev ? localImageUrl : cloudImageUrl
+  const isImageLoading = !isLocalDev && !!selected?.image_path && isImageFetching && !cloudImageUrl
+
+  const refreshImage = () => {
+    queryClient.invalidateQueries({ queryKey: ['offering-image-signed', selected?.image_path] })
+  }
 
   const approveMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -779,6 +790,12 @@ export function ReviewPage() {
                     {Math.round(zoom * 100)}% — Reset
                   </button>
                 )}
+                {!isLocalDev && selected.image_path && (
+                  <button onClick={refreshImage} title="Refresh image"
+                    className="p-1 rounded hover:bg-muted-foreground/10 cursor-pointer text-muted hover:text-foreground">
+                    <RefreshCw className={`w-3.5 h-3.5 ${isImageFetching ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
                 <span className={`text-xs px-2 py-0.5 rounded-full ${
                   selected.status === 'scanned' ? 'bg-success/10 text-success' :
                   selected.status === 'uploaded' ? 'bg-warning/10 text-warning' :
@@ -809,11 +826,21 @@ export function ReviewPage() {
                   }}
                 />
               ) : (
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex flex-col items-center gap-3">
                   {selected.source_type === 'manual' ? (
                     <>
                       <PenLine className="w-12 h-12 text-muted/30" />
                       <p className="text-muted/50 text-lg font-bold uppercase tracking-widest">Manual Entry</p>
+                    </>
+                  ) : isImageLoading ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-muted" />
+                  ) : selected.image_path && !isLocalDev ? (
+                    <>
+                      <p className="text-muted text-sm">Image not available</p>
+                      <button onClick={refreshImage}
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline cursor-pointer">
+                        <RefreshCw className="w-3 h-3" /> Retry
+                      </button>
                     </>
                   ) : (
                     <p className="text-muted text-sm">No image available</p>

@@ -710,6 +710,7 @@ class CardsPdfRequest(BaseModel):
     period: str
     cards: list  # [{date: str, rows: [[label, amount]], total: str}]
     accent_color: Optional[str] = None
+    upload_to_drive: bool = False
 
 
 def _generate_cards_pdf(title: str, period: str, cards: list, accent_color: Optional[str] = None) -> bytes:
@@ -812,12 +813,27 @@ async def generate_cards_pdf(req: CardsPdfRequest):
     try:
         pdf_bytes = _generate_cards_pdf(req.title, req.period, req.cards, req.accent_color)
         slug = req.period.replace(' ', '_').replace('/', '-')
-        return {
+        filename = f"OTS_Cards_{slug}.pdf"
+        result: dict = {
             "success": True,
             "pdf_base64": base64.b64encode(pdf_bytes).decode(),
-            "filename": f"OTS_Cards_{slug}.pdf",
+            "filename": filename,
             "size": len(pdf_bytes),
         }
+        if req.upload_to_drive:
+            creds = _get_setting("google_drive_credentials")
+            folder_id = _get_setting("drive_reports_folder_id")
+            if creds and folder_id:
+                service = get_drive_service(creds)
+                drive_result = upload_to_drive(service, folder_id, filename, pdf_bytes, 'application/pdf')
+                result["drive"] = {
+                    "file_id": drive_result.get("id"),
+                    "name": drive_result.get("name"),
+                    "link": drive_result.get("webViewLink"),
+                }
+            else:
+                result["drive_error"] = "Drive not configured"
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cards PDF failed: {e}")
 
