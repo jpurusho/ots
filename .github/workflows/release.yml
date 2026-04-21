@@ -27,6 +27,12 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          npm version "$TAG" --no-git-tag-version
+
       - name: Build app
         run: make build
         env:
