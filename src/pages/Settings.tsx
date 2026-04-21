@@ -2,7 +2,7 @@ import { getBackendUrl } from '@/lib/backend'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Copy, Check } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Copy, Check, RefreshCw } from 'lucide-react'
 import { DriveFolderPicker } from '@/components/DriveFolderPicker'
 import { useTheme } from '@/lib/theme-context'
 import { useAccentColors } from '@/lib/accent-colors'
@@ -22,6 +22,7 @@ const TABS = [
   { id: 'drive', label: 'Google Drive' },
   { id: 'email', label: 'Email' },
   { id: 'themes', label: 'Themes' },
+  { id: 'database', label: 'Database' },
 ]
 
 // Fields that should use textarea (multiline)
@@ -299,9 +300,10 @@ export function SettingsPage() {
       })()}
 
       {/* Settings form */}
-      {/* Themes tab */}
       {activeTab === 'themes' ? (
         <ThemesTab />
+      ) : activeTab === 'database' ? (
+        <DatabaseTab />
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="divide-y divide-border">
@@ -580,6 +582,116 @@ export function SettingsPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Database / Usage tab ──────────────────────────────────────────────────
+
+interface DbStats {
+  db_size_bytes: number
+  tables: Array<{ name: string; rows: number; size_bytes: number }>
+  storage_size_bytes: number
+  storage_count: number
+  auth_user_count: number
+}
+
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+}
+
+function UsageBar({ label, used, limit, limitLabel }: { label: string; used: number; limit: number; limitLabel: string }) {
+  const pct = Math.min(100, (used / limit) * 100)
+  const barColor = pct > 90 ? 'bg-destructive' : pct > 70 ? 'bg-warning' : 'bg-success'
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1.5">
+        <span className="font-medium">{label}</span>
+        <span className="text-muted">{fmtBytes(used)} / {limitLabel}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted/20">
+        <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: Math.max(pct, 0.5) + '%' }} />
+      </div>
+      <p className="text-[10px] text-muted mt-1">{pct.toFixed(1)}% used</p>
+    </div>
+  )
+}
+
+function DatabaseTab() {
+  const { data: stats, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['db-stats'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_db_stats')
+      if (error) throw error
+      return data as DbStats
+    },
+    staleTime: 60 * 1000,
+  })
+
+  const FREE_DB_BYTES = 500 * 1024 * 1024
+  const FREE_STORAGE_BYTES = 1024 * 1024 * 1024
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Supabase Usage</p>
+            <p className="text-[10px] text-muted">Limits shown are for the Supabase Free tier</p>
+          </div>
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
+            {isFetching ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            Refresh
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+        ) : error ? (
+          <div className="px-5 py-6 text-center text-sm text-destructive">{(error as Error).message}</div>
+        ) : stats ? (
+          <div className="p-5 space-y-5">
+            {/* Progress bars */}
+            <UsageBar label="Database" used={stats.db_size_bytes} limit={FREE_DB_BYTES} limitLabel="500 MB" />
+            <UsageBar label="Storage (offering images)" used={stats.storage_size_bytes} limit={FREE_STORAGE_BYTES} limitLabel="1 GB" />
+
+            {/* Auth users */}
+            <div className="flex items-center justify-between py-3 border-t border-border">
+              <div>
+                <p className="text-xs font-medium">Auth Users</p>
+                <p className="text-[10px] text-muted">Free tier limit: 50,000 MAU</p>
+              </div>
+              <span className="text-lg font-bold">{stats.auth_user_count.toLocaleString()}</span>
+            </div>
+
+            {/* Table breakdown */}
+            <div className="border-t border-border pt-4">
+              <p className="text-[10px] font-medium text-muted uppercase tracking-wide mb-3">Tables</p>
+              <div className="divide-y divide-border/50">
+                {stats.tables.map(t => (
+                  <div key={t.name} className="flex items-center justify-between py-2 text-xs">
+                    <span className="font-mono text-muted">{t.name}</span>
+                    <div className="flex items-center gap-5">
+                      <span className="text-muted">{t.rows.toLocaleString()} rows</span>
+                      <span className="font-medium w-16 text-right">{fmtBytes(t.size_bytes)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Storage file count */}
+            <div className="flex items-center justify-between pt-3 border-t border-border text-xs text-muted">
+              <span>Image files stored</span>
+              <span>{stats.storage_count.toLocaleString()} files</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

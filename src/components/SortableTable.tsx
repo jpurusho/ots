@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Search, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 
 export interface Column<T> {
@@ -21,6 +21,7 @@ interface SortableTableProps<T> {
   onRowClick?: (row: T) => void
   footerRow?: React.ReactNode
   emptyMessage?: string
+  pageSize?: number
 }
 
 export function SortableTable<T>({
@@ -34,10 +35,12 @@ export function SortableTable<T>({
   onRowClick,
   footerRow,
   emptyMessage = 'No data',
+  pageSize,
 }: SortableTableProps<T>) {
   const [sortKey, setSortKey] = useState(defaultSortKey || columns[0]?.key || '')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(defaultSortDir)
   const [filterText, setFilterText] = useState('')
+  const [page, setPage] = useState(0)
 
   const toggleSort = (key: string) => {
     if (sortKey === key) {
@@ -46,6 +49,7 @@ export function SortableTable<T>({
       setSortKey(key)
       setSortDir('asc')
     }
+    setPage(0)
   }
 
   const filtered = useMemo(() => {
@@ -68,6 +72,13 @@ export function SortableTable<T>({
 
     return rows
   }, [data, filterText, sortKey, sortDir, searchFn, columns])
+
+  // Reset to page 0 when search filter changes
+  useEffect(() => { setPage(0) }, [filterText])
+
+  const totalPages = pageSize ? Math.max(1, Math.ceil(filtered.length / pageSize)) : 1
+  const safePage = Math.min(page, totalPages - 1)
+  const pageRows = pageSize ? filtered.slice(safePage * pageSize, (safePage + 1) * pageSize) : filtered
 
   return (
     <div className="space-y-3">
@@ -121,7 +132,7 @@ export function SortableTable<T>({
                   </td>
                 </tr>
               ) : (
-                filtered.map(row => (
+                pageRows.map(row => (
                   <tr
                     key={keyFn(row)}
                     onClick={() => onRowClick?.(row)}
@@ -148,7 +159,22 @@ export function SortableTable<T>({
         </div>
       </div>
 
-      <p className="text-xs text-muted">{filtered.length} of {data.length} rows</p>
+      <div className="flex items-center justify-between text-xs text-muted">
+        <span>{filtered.length} of {data.length} rows</span>
+        {pageSize && totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={safePage === 0}
+              className="px-2 py-1 rounded border border-border hover:bg-muted-foreground/10 disabled:opacity-30 cursor-pointer">
+              ‹ Prev
+            </button>
+            <span>Page {safePage + 1} of {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={safePage >= totalPages - 1}
+              className="px-2 py-1 rounded border border-border hover:bg-muted-foreground/10 disabled:opacity-30 cursor-pointer">
+              Next ›
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

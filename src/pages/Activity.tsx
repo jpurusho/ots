@@ -43,6 +43,14 @@ export function ActivityPage() {
   }
 
 
+  const { data: pageSize } = useQuery({
+    queryKey: ['settings', 'items_per_page'],
+    queryFn: async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'items_per_page').single()
+      return parseInt(data?.value || '20', 10) || 20
+    },
+  })
+
   const { data: entries, isLoading } = useQuery({
     queryKey: ['activity'],
     queryFn: async () => {
@@ -50,7 +58,6 @@ export function ActivityPage() {
         .from('activity_log')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(500)
       if (error) throw error
       return data as ActivityEntry[]
     },
@@ -235,6 +242,7 @@ export function ActivityPage() {
             (r.resource_type || '').toLowerCase().includes(q)
           }
           emptyMessage="No activity recorded yet"
+          pageSize={pageSize}
         />
       ) : (
         <div className="rounded-xl border border-border bg-card p-10 text-center">
