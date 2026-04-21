@@ -341,16 +341,45 @@ export function ReviewPage() {
     },
   })
 
-  // Filter by month/year and search text
+  // Compute available years from data (always include current year)
+  const availableYears = useMemo(() => {
+    const years = new Set<number>()
+    years.add(new Date().getFullYear())
+    for (const o of rawOfferings || []) {
+      const d = parseDate(o.offering_date)
+      if (d) years.add(d.getFullYear())
+    }
+    return Array.from(years).sort((a, b) => b - a)
+  }, [rawOfferings])
+
+  // Auto-detect year: if selected year has no data, switch to most recent year with data
+  useEffect(() => {
+    if (!rawOfferings || rawOfferings.length === 0) return
+    const hasSelectedYear = rawOfferings.some(o => {
+      const d = parseDate(o.offering_date)
+      return d && d.getFullYear() === filterYear
+    })
+    if (!hasSelectedYear) {
+      const years = rawOfferings
+        .map(o => parseDate(o.offering_date)?.getFullYear())
+        .filter((y): y is number => !!y)
+      if (years.length > 0) setFilterYear(Math.max(...years))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawOfferings])
+
+  // Filter by year (always), month (when selected), and search text
   const offerings = useMemo(() => {
     let filtered = rawOfferings || []
 
-    if (filterMonth !== null) {
-      filtered = filtered.filter(o => {
-        const d = parseDate(o.offering_date)
-        return d && d.getMonth() === filterMonth && d.getFullYear() === filterYear
-      })
-    }
+    // Always filter by year; undated offerings shown only in "All months" view
+    filtered = filtered.filter(o => {
+      const d = parseDate(o.offering_date)
+      if (!d) return filterMonth === null
+      if (d.getFullYear() !== filterYear) return false
+      if (filterMonth !== null && d.getMonth() !== filterMonth) return false
+      return true
+    })
 
     if (filterText) {
       const q = filterText.toLowerCase()
@@ -657,24 +686,22 @@ export function ReviewPage() {
         )}
       </div>
 
-      {/* Filter bar: month pills + search */}
+      {/* Filter bar: year selector + month pills + search */}
       <div className="flex items-center gap-2 flex-wrap">
+        <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}
+          className="text-[10px] px-1.5 py-1 rounded border border-border bg-background font-medium">
+          {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
         <button onClick={() => setFilterMonth(null)}
           className={`text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
             filterMonth === null ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:text-foreground'
           }`}>All</button>
         {MONTHS_SHORT.map((m, i) => (
-          <button key={i} onClick={() => { setFilterMonth(i); setFilterYear(new Date().getFullYear()) }}
+          <button key={i} onClick={() => setFilterMonth(i)}
             className={`text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors ${
               filterMonth === i ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:text-foreground'
             }`}>{m}</button>
         ))}
-        {filterMonth !== null && (
-          <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}
-            className="text-[10px] px-1.5 py-1 rounded border border-border bg-background">
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        )}
         <div className="relative flex-1 max-w-[200px] ml-auto">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
           <input type="text" placeholder="Search..."
