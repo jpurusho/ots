@@ -34,6 +34,25 @@ const FILE_PICKER_FIELDS = ['google_drive_credentials']
 const FOLDER_PICKER_FIELDS = ['drive_images_folder_id', 'drive_reports_folder_id']
 // Read-only usage stats (shown as card, not editable)
 const USAGE_FIELDS = ['api_total_input_tokens', 'api_total_output_tokens', 'api_total_scans', 'api_total_cost']
+// Filename template fields (custom rendering with live preview)
+const FILENAME_TEMPLATE_FIELDS = ['filename_template_report', 'filename_template_cards']
+const FILENAME_TEMPLATE_DEFAULTS: Record<string, string> = {
+  filename_template_report: '{church}_Report_{period}_{date}',
+  filename_template_cards: '{church}_Cards_{period}_{date}',
+}
+const FILENAME_TEMPLATE_VARS = ['{church}', '{period}', '{date}', '{year}', '{month}']
+
+function resolveFilenamePreview(template: string, churchName: string): string {
+  const today = new Date()
+  const church = (churchName || 'Church').replace(/\s+/g, '_').replace(/[^\w\-]/g, '')
+  const name = template
+    .replace(/\{church\}/g, church)
+    .replace(/\{period\}/g, 'April_2026')
+    .replace(/\{date\}/g, today.toISOString().split('T')[0])
+    .replace(/\{year\}/g, String(today.getFullYear()))
+    .replace(/\{month\}/g, today.toLocaleString('default', { month: 'long' }))
+  return name.endsWith('.pdf') ? name : name + '.pdf'
+}
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
@@ -310,6 +329,46 @@ export function SettingsPage() {
                       <option value="false">Anthropic API (Direct)</option>
                       <option value="true">AWS Bedrock</option>
                     </select>
+                  ) : FILENAME_TEMPLATE_FIELDS.includes(setting.key) ? (
+                    <div className="mt-2 space-y-2">
+                      <input
+                        type="text"
+                        value={formValues[setting.key] || ''}
+                        onChange={e => setFormValues(v => ({ ...v, [setting.key]: e.target.value }))}
+                        placeholder={FILENAME_TEMPLATE_DEFAULTS[setting.key]}
+                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background font-mono"
+                      />
+                      <div className="flex items-center gap-2 text-xs text-muted">
+                        <span className="shrink-0">Preview:</span>
+                        <code className="text-[11px] bg-muted/30 px-2 py-0.5 rounded truncate">
+                          {resolveFilenamePreview(
+                            formValues[setting.key] || FILENAME_TEMPLATE_DEFAULTS[setting.key],
+                            formValues['church_name'] || ''
+                          )}
+                        </code>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
+                        <span>Insert:</span>
+                        {FILENAME_TEMPLATE_VARS.map(v => (
+                          <button key={v} type="button"
+                            onClick={() => setFormValues(prev => ({
+                              ...prev,
+                              [setting.key]: (prev[setting.key] || FILENAME_TEMPLATE_DEFAULTS[setting.key]) + v,
+                            }))}
+                            className="font-mono bg-muted/20 hover:bg-primary/10 hover:text-primary border border-border/60 px-1.5 py-0.5 rounded cursor-pointer transition-colors">
+                            {v}
+                          </button>
+                        ))}
+                        <button type="button"
+                          onClick={() => setFormValues(prev => ({
+                            ...prev,
+                            [setting.key]: FILENAME_TEMPLATE_DEFAULTS[setting.key],
+                          }))}
+                          className="ml-1 text-muted hover:text-foreground cursor-pointer underline">
+                          Reset default
+                        </button>
+                      </div>
+                    </div>
                   ) : isTextarea ? (
                     <div>
                       {FILE_PICKER_FIELDS.includes(setting.key) && (

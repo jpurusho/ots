@@ -537,6 +537,43 @@ async def import_from_drive(req: DriveImportRequest):
     }
 
 
+DEFAULT_FILENAME_TEMPLATES = {
+    'filename_template_report': '{church}_Report_{period}_{date}',
+    'filename_template_cards': '{church}_Cards_{period}_{date}',
+}
+
+
+def _resolve_filename(template_key: str, period: str) -> str:
+    """Resolve a filename template from app_settings, substituting context variables."""
+    import re
+    import datetime
+    template = _get_setting(template_key) or DEFAULT_FILENAME_TEMPLATES[template_key]
+    church = re.sub(r'\s+', '_', (_get_setting('church_name') or 'OTS').strip())
+    church = re.sub(r'[^\w\-]', '', church)  # strip non-word chars except hyphens
+    today = datetime.date.today()
+    period_slug = re.sub(r'[^\w]', '_', period.strip())
+    period_slug = re.sub(r'_+', '_', period_slug).strip('_')
+    try:
+        name = template.format(
+            church=church,
+            period=period_slug,
+            date=today.strftime('%Y-%m-%d'),
+            year=today.year,
+            month=today.strftime('%B'),
+        )
+    except (KeyError, IndexError, ValueError):
+        # Bad template — fall back to default
+        name = DEFAULT_FILENAME_TEMPLATES[template_key].format(
+            church=church, period=period_slug,
+            date=today.strftime('%Y-%m-%d'), year=today.year, month=today.strftime('%B'),
+        )
+    # Strip chars not valid in filenames
+    name = re.sub(r'[<>:"/\\|?*]', '_', name).strip('_')
+    if not name.lower().endswith('.pdf'):
+        name += '.pdf'
+    return name
+
+
 def _generate_pdf(title: str, subtitle: str, headers: list[str],
                    rows: list[list[str]], footer_row: Optional[list] = None,
                    accent_color: Optional[str] = None) -> bytes:
@@ -683,6 +720,9 @@ async def generate_pdf(req: GeneratePdfRequest):
     try:
         pdf_bytes = _generate_pdf(req.title, req.subtitle, req.headers, req.rows, req.footer_row, req.accent_color)
 
+        # Resolve filename from admin template (subtitle is the period label)
+        filename = _resolve_filename('filename_template_report', req.subtitle)
+
         result: dict = {"success": True, "size": len(pdf_bytes)}
 
         # Upload to Drive if requested
@@ -691,7 +731,7 @@ async def generate_pdf(req: GeneratePdfRequest):
             folder_id = _get_setting("drive_reports_folder_id")
             if creds and folder_id:
                 service = get_drive_service(creds)
-                drive_result = upload_to_drive(service, folder_id, req.filename, pdf_bytes, 'application/pdf')
+                drive_result = upload_to_drive(service, folder_id, filename, pdf_bytes, 'application/pdf')
                 result["drive"] = {"file_id": drive_result.get("id"), "name": drive_result.get("name"),
                                    "link": drive_result.get("webViewLink")}
             else:
@@ -699,7 +739,7 @@ async def generate_pdf(req: GeneratePdfRequest):
 
         # Return PDF as base64 for download
         result["pdf_base64"] = base64.b64encode(pdf_bytes).decode()
-        result["filename"] = req.filename
+        result["filename"] = filename
         return result
     except Exception as e:
         raise HTTPException(500, f"PDF generation failed: {e}")
@@ -812,8 +852,7 @@ async def generate_cards_pdf(req: CardsPdfRequest):
     """Generate a PDF with offering cards (2 per row, portrait letter)."""
     try:
         pdf_bytes = _generate_cards_pdf(req.title, req.period, req.cards, req.accent_color)
-        slug = req.period.replace(' ', '_').replace('/', '-')
-        filename = f"OTS_Cards_{slug}.pdf"
+        filename = _resolve_filename('filename_template_cards', req.period)
         result: dict = {
             "success": True,
             "pdf_base64": base64.b64encode(pdf_bytes).decode(),
