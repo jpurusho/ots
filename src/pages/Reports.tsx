@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import {
   FileText, Download, Loader2, ChevronLeft, ChevronRight, Printer,
   ExternalLink, Share2, ChevronDown, ChevronUp, ArrowUpDown, Search,
-  CalendarRange, CloudUpload, Mail,
+  CalendarRange, CloudUpload, Mail, TrendingUp,
 } from 'lucide-react'
 import { generateAndDownloadPdf, generateAndUploadPdf } from '@/lib/pdf-utils'
 import { useAccentColors } from '@/lib/accent-colors'
@@ -28,7 +28,7 @@ interface ApprovedOffering {
 
 type SortKey = 'offering_date' | 'general' | 'cash' | 'sunday_school' | 'building_fund' | 'misc' | 'total'
 type SortDir = 'asc' | 'desc'
-type ViewMode = 'monthly' | 'yearly' | 'range'
+type ViewMode = 'monthly' | 'yearly' | 'range' | 'trends'
 
 type Category = 'general' | 'cash' | 'sunday_school' | 'building_fund' | 'misc'
 
@@ -114,6 +114,232 @@ function buildEmailCard(
   )
 }
 
+
+function TrendsTab({ allApproved }: { allApproved: ApprovedOffering[] }) {
+  const now = useMemo(() => new Date(), [])
+  const curYear = now.getFullYear()
+  const [wowMonth, setWowMonth] = useState(now.getMonth())
+  const [wowYear, setWowYear] = useState(now.getFullYear())
+
+  const byYearMonth = useMemo(() => {
+    const map = new Map<string, ApprovedOffering[]>()
+    for (const o of allApproved) {
+      const d = parseOfferingDate(o.offering_date)
+      if (!d) continue
+      const key = `${d.getFullYear()}-${d.getMonth()}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(o)
+    }
+    return map
+  }, [allApproved])
+
+  const monthTotal = (y: number, m: number) =>
+    (byYearMonth.get(`${y}-${m}`) || []).reduce((sum, o) => sum + rowTotal(o), 0)
+
+  const last12 = useMemo(() => {
+    const result: { year: number; month: number; total: number }[] = []
+    for (let i = 11; i >= 0; i--) {
+      let m = now.getMonth() - i
+      let y = now.getFullYear()
+      while (m < 0) { m += 12; y-- }
+      result.push({ year: y, month: m, total: monthTotal(y, m) })
+    }
+    return result
+  }, [byYearMonth, now])
+
+  const maxMonthly = useMemo(() => Math.max(...last12.map(x => x.total), 1), [last12])
+
+  const wowData = useMemo(() => {
+    const curr = (byYearMonth.get(`${wowYear}-${wowMonth}`) || [])
+      .sort((a, b) => (parseOfferingDate(a.offering_date)?.getTime() || 0) - (parseOfferingDate(b.offering_date)?.getTime() || 0))
+    let pm = wowMonth - 1, py = wowYear
+    if (pm < 0) { pm = 11; py-- }
+    const prior = (byYearMonth.get(`${py}-${pm}`) || [])
+      .sort((a, b) => (parseOfferingDate(a.offering_date)?.getTime() || 0) - (parseOfferingDate(b.offering_date)?.getTime() || 0))
+    const prevLastWeek = prior.length > 0 ? rowTotal(prior[prior.length - 1]) : null
+    return curr.map((o, i) => {
+      const total = rowTotal(o)
+      const prev = i === 0 ? prevLastWeek : rowTotal(curr[i - 1])
+      const pct = prev && prev > 0 ? ((total - prev) / prev * 100) : null
+      return { o, total, pct }
+    })
+  }, [byYearMonth, wowMonth, wowYear])
+
+  const maxWow = useMemo(() => Math.max(...wowData.map(x => x.total), 1), [wowData])
+
+  const yoyData = useMemo(() => Array.from({ length: 12 }, (_, m) => ({
+    month: m,
+    cur: monthTotal(curYear, m),
+    prev: monthTotal(curYear - 1, m),
+  })), [byYearMonth, curYear])
+
+  const maxYoy = useMemo(() => Math.max(...yoyData.flatMap(x => [x.cur, x.prev]), 1), [yoyData])
+
+  const allTotals = useMemo(() => allApproved.map(o => rowTotal(o)).filter(t => t > 0), [allApproved])
+  const bestWeekTotal = allTotals.length > 0 ? Math.max(...allTotals) : 0
+  const avgWeekTotal = allTotals.length > 0 ? allTotals.reduce((a, b) => a + b, 0) / allTotals.length : 0
+  const bestWeekOffering = useMemo(
+    () => allApproved.find(o => rowTotal(o) === bestWeekTotal),
+    [allApproved, bestWeekTotal]
+  )
+
+  const curYearTotal = useMemo(() =>
+    allApproved.filter(o => parseOfferingDate(o.offering_date)?.getFullYear() === curYear)
+      .reduce((sum, o) => sum + rowTotal(o), 0),
+    [allApproved, curYear]
+  )
+  const prevYearTotal = useMemo(() =>
+    allApproved.filter(o => parseOfferingDate(o.offering_date)?.getFullYear() === curYear - 1)
+      .reduce((sum, o) => sum + rowTotal(o), 0),
+    [allApproved, curYear]
+  )
+  const yoyPct = prevYearTotal > 0 ? ((curYearTotal - prevYearTotal) / prevYearTotal * 100) : null
+
+  if (allApproved.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-10 text-center">
+        <TrendingUp className="w-10 h-10 mx-auto text-muted mb-3" />
+        <p className="text-muted">No approved offerings yet</p>
+        <p className="text-xs text-muted mt-1">Approve offerings to see trend analysis</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Key metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-[10px] text-muted uppercase tracking-wider">Best Week</p>
+          <p className="text-xl font-bold text-primary">${bestWeekTotal.toFixed(2)}</p>
+          {bestWeekOffering && <p className="text-[10px] text-muted mt-0.5">{formatDate(bestWeekOffering.offering_date)}</p>}
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-[10px] text-muted uppercase tracking-wider">Weekly Average</p>
+          <p className="text-xl font-bold">${avgWeekTotal.toFixed(2)}</p>
+          <p className="text-[10px] text-muted mt-0.5">{allTotals.length} weeks total</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-[10px] text-muted uppercase tracking-wider">{curYear} Total</p>
+          <p className="text-xl font-bold">${curYearTotal.toFixed(2)}</p>
+          {yoyPct !== null && (
+            <p className={`text-[10px] mt-0.5 font-medium ${yoyPct >= 0 ? 'text-success' : 'text-destructive'}`}>
+              {yoyPct >= 0 ? '+' : ''}{yoyPct.toFixed(1)}% vs {curYear - 1}
+            </p>
+          )}
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-[10px] text-muted uppercase tracking-wider">{curYear - 1} Total</p>
+          <p className="text-xl font-bold">${prevYearTotal.toFixed(2)}</p>
+          <p className="text-[10px] text-muted mt-0.5">Prior full year</p>
+        </div>
+      </div>
+
+      {/* Monthly trend — last 12 months */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <h3 className="text-sm font-semibold mb-4">Monthly Totals — Last 12 Months</h3>
+        <div className="space-y-1.5">
+          {last12.map(({ year, month, total }, i) => {
+            const prev = i > 0 ? last12[i - 1].total : null
+            const pct = prev !== null && prev > 0 ? ((total - prev) / prev * 100) : null
+            const barPct = total > 0 ? (total / maxMonthly * 100) : 0
+            const isCurrent = year === now.getFullYear() && month === now.getMonth()
+            return (
+              <div key={`${year}-${month}`} className="flex items-center gap-2">
+                <div className="w-16 text-right text-[10px] text-muted flex-shrink-0">
+                  {MONTHS[month].slice(0, 3)}{year !== now.getFullYear() ? ` '${String(year).slice(2)}` : ''}
+                </div>
+                <div className={`flex-1 h-5 rounded overflow-hidden ${isCurrent ? 'bg-primary/20' : 'bg-border/40'}`}>
+                  <div
+                    className={`h-full rounded transition-all ${isCurrent ? 'bg-primary' : 'bg-primary/60'}`}
+                    style={{ width: barPct + '%' }}
+                  />
+                </div>
+                <div className="w-20 text-right text-xs font-medium flex-shrink-0">
+                  {total > 0 ? `$${total.toFixed(0)}` : <span className="text-muted text-[10px]">—</span>}
+                </div>
+                <div className={`w-14 text-right text-[10px] font-medium flex-shrink-0 ${pct !== null ? (pct >= 0 ? 'text-success' : 'text-destructive') : ''}`}>
+                  {pct !== null && total > 0 ? `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%` : ''}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Week-over-week */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold">Week-over-Week — {MONTHS[wowMonth]} {wowYear}</h3>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { let m = wowMonth - 1, y = wowYear; if (m < 0) { m = 11; y-- } setWowMonth(m); setWowYear(y) }}
+              className="p-1 rounded border border-border hover:bg-muted-foreground/10 cursor-pointer"
+            ><ChevronLeft className="w-3.5 h-3.5" /></button>
+            <button
+              onClick={() => { let m = wowMonth + 1, y = wowYear; if (m > 11) { m = 0; y++ } setWowMonth(m); setWowYear(y) }}
+              className="p-1 rounded border border-border hover:bg-muted-foreground/10 cursor-pointer"
+            ><ChevronRight className="w-3.5 h-3.5" /></button>
+          </div>
+        </div>
+        {wowData.length === 0 ? (
+          <p className="text-sm text-muted text-center py-4">No offerings recorded for {MONTHS[wowMonth]} {wowYear}</p>
+        ) : (
+          <div className="space-y-1.5">
+            {wowData.map(({ o, total, pct }) => (
+              <div key={o.id} className="flex items-center gap-2">
+                <div className="w-20 text-right text-[10px] text-muted flex-shrink-0">{formatDate(o.offering_date)}</div>
+                <div className="flex-1 h-5 bg-border/40 rounded overflow-hidden">
+                  <div className="h-full rounded bg-primary/70 transition-all" style={{ width: (total / maxWow * 100) + '%' }} />
+                </div>
+                <div className="w-20 text-right text-xs font-medium flex-shrink-0">${total.toFixed(2)}</div>
+                <div className={`w-14 text-right text-[10px] font-medium flex-shrink-0 ${pct !== null ? (pct >= 0 ? 'text-success' : 'text-destructive') : 'text-muted'}`}>
+                  {pct !== null ? `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%` : 'first'}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Year-over-year */}
+      {(curYearTotal > 0 || prevYearTotal > 0) && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="text-sm font-semibold mb-4">Year-over-Year — {curYear} vs {curYear - 1}</h3>
+          <div className="space-y-2">
+            {yoyData.filter(({ cur, prev }) => cur > 0 || prev > 0).map(({ month, cur, prev }) => {
+              const pct = prev > 0 ? ((cur - prev) / prev * 100) : null
+              return (
+                <div key={month} className="flex items-center gap-2">
+                  <div className="w-8 text-right text-[10px] text-muted flex-shrink-0">{MONTHS[month].slice(0, 3)}</div>
+                  <div className="flex-1 space-y-0.5">
+                    <div className="h-4 bg-border/40 rounded overflow-hidden">
+                      <div className="h-full rounded bg-primary/70" style={{ width: (cur / maxYoy * 100) + '%' }} />
+                    </div>
+                    <div className="h-4 bg-border/40 rounded overflow-hidden">
+                      <div className="h-full rounded bg-muted-foreground/40" style={{ width: (prev / maxYoy * 100) + '%' }} />
+                    </div>
+                  </div>
+                  <div className="w-20 text-right flex-shrink-0 space-y-0.5">
+                    <div className="text-[10px] font-medium">{cur > 0 ? `$${cur.toFixed(0)}` : '—'}</div>
+                    <div className="text-[10px] text-muted">{prev > 0 ? `$${prev.toFixed(0)}` : '—'}</div>
+                  </div>
+                  <div className={`w-14 text-right text-[10px] font-medium flex-shrink-0 ${pct !== null ? (pct >= 0 ? 'text-success' : 'text-destructive') : ''}`}>
+                    {pct !== null && cur > 0 ? `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%` : ''}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border text-[10px] text-muted">
+            <span className="flex items-center gap-1.5"><span className="w-4 h-2.5 rounded bg-primary/70 inline-block" /> {curYear}</span>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-2.5 rounded bg-muted-foreground/40 inline-block" /> {curYear - 1}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function MonthCalendar({ year, month, offerings, missingSundays, onSelectDate }: {
   year: number
@@ -612,7 +838,7 @@ export function ReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Reports</h1>
-          <p className="text-muted text-sm">{title} — {viewMode === 'monthly' ? 'Monthly' : viewMode === 'yearly' ? 'Yearly' : 'Date Range'} Report</p>
+          <p className="text-muted text-sm">{title} — {viewMode === 'monthly' ? 'Monthly' : viewMode === 'yearly' ? 'Yearly' : viewMode === 'trends' ? 'Trends' : 'Date Range'} Report</p>
         </div>
       </div>
 
@@ -631,6 +857,10 @@ export function ReportsPage() {
             className={`px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors flex items-center gap-1 ${
               viewMode === 'range' ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
             }`}><CalendarRange className="w-3 h-3" /> Range</button>
+          <button onClick={() => setViewMode('trends')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors flex items-center gap-1 ${
+              viewMode === 'trends' ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
+            }`}><TrendingUp className="w-3 h-3" /> Trends</button>
         </div>
 
         {viewMode === 'monthly' ? (
@@ -657,7 +887,7 @@ export function ReportsPage() {
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
-        ) : (
+        ) : viewMode === 'range' ? (
           <div className="flex items-center gap-2">
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
               className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
@@ -665,17 +895,19 @@ export function ReportsPage() {
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
               className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
           </div>
-        )}
+        ) : null}
 
-        <span className="text-xs text-muted">
-          {offerings.length} offering{offerings.length !== 1 ? 's' : ''}
-          {missingSundays.length > 0 && (
-            <button onClick={() => setShowMissing(!showMissing)}
-              className={`ml-2 cursor-pointer ${showMissing ? 'text-warning' : 'text-muted line-through'}`}>
-              {missingSundays.length} missing {showMissing ? '(hide)' : '(show)'}
-            </button>
-          )}
-        </span>
+        {viewMode !== 'trends' && (
+          <span className="text-xs text-muted">
+            {offerings.length} offering{offerings.length !== 1 ? 's' : ''}
+            {missingSundays.length > 0 && (
+              <button onClick={() => setShowMissing(!showMissing)}
+                className={`ml-2 cursor-pointer ${showMissing ? 'text-warning' : 'text-muted line-through'}`}>
+                {missingSundays.length} missing {showMissing ? '(hide)' : '(show)'}
+              </button>
+            )}
+          </span>
+        )}
       </div>
 
       {/* Month calendar view (monthly mode only) */}
@@ -691,7 +923,9 @@ export function ReportsPage() {
         />
       )}
 
-      {isLoading ? (
+      {viewMode === 'trends' ? (
+        <TrendsTab allApproved={allApproved || []} />
+      ) : isLoading ? (
         <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
       ) : offerings.length > 0 ? (
         <>
