@@ -782,35 +782,28 @@ export function ReportsPage() {
 
   const buildEmailReportHtml = () => {
     const rc = accentColors.report || '#16a34a'
-    const numCols = catList.length + 2
-    const datePct = 20
-    const otherPct = Math.floor((100 - datePct) / (numCols - 1))
-    const thStyle = 'padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1'
-    const tdStyle = 'padding:8px 12px;text-align:right;border-bottom:1px solid #e5e7eb'
-    const ftStyle = 'padding:10px 12px;text-align:right;font-weight:bold'
+    const thStyle = 'padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1;white-space:nowrap'
+    const tdStyle = 'padding:7px 10px;text-align:right;border-bottom:1px solid #e5e7eb;white-space:nowrap'
+    const ftStyle = 'padding:8px 10px;text-align:right;font-weight:bold;white-space:nowrap'
     const rows = offerings.map((o, i) => {
       const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc'
-      return '<tr style="background:' + bg + '"><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">' + formatDate(o.offering_date) + '</td>' +
+      return '<tr style="background:' + bg + '"><td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;white-space:nowrap;text-align:left">' + formatDate(o.offering_date) + '</td>' +
         catList.map(c => '<td style="' + tdStyle + '">' + fmt((o as any)[c.key]) + '</td>').join('') +
         '<td style="' + tdStyle + ';font-weight:bold">$' + filteredRowTotal(o).toFixed(2) + '</td></tr>'
     }).join('')
-    const colgroup = '<colgroup><col style="width:' + datePct + '%"/>' +
-      catList.map(() => '<col style="width:' + otherPct + '%"/>').join('') +
-      '<col style="width:' + otherPct + '%"/></colgroup>'
     const headerCells = '<th style="' + thStyle + ';text-align:left">Date</th>' +
       catList.map(c => '<th style="' + thStyle + '">' + c.label + '</th>').join('') +
       '<th style="' + thStyle + '">Total</th>'
     const footerCells = '<td style="' + ftStyle + ';text-align:left">Total</td>' +
       catList.map(c => '<td style="' + ftStyle + '">$' + (filteredGrandTotal[c.key] || 0).toFixed(2) + '</td>').join('') +
       '<td style="' + ftStyle + '">$' + filteredGrandTotalSum.toFixed(2) + '</td>'
-    return '<div style="font-family:system-ui,sans-serif;max-width:700px;margin:0 auto;color:#1a1a2e">' +
+    return '<div style="font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;color:#1a1a2e">' +
       '<div style="background:' + rc + ';color:white;padding:20px 24px;border-radius:8px 8px 0 0">' +
         '<h1 style="margin:0;font-size:18px">' + title + '</h1>' +
         '<p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + '</p>' +
       '</div>' +
-      '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">' +
-      '<table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">' +
-      colgroup +
+      '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow-x:auto">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr style="background:#f1f5f9">' + headerCells + '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '<tfoot><tr style="background:' + rc + ';color:white">' + footerCells + '</tr></tfoot>' +
