@@ -802,7 +802,7 @@ export function ReportsPage() {
         '<h1 style="margin:0;font-size:18px">' + title + '</h1>' +
         '<p style="margin:4px 0 0;font-size:13px;opacity:0.85">' + periodLabel + '</p>' +
       '</div>' +
-      '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow-x:auto">' +
+      '<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">' +
       '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr style="background:#f1f5f9">' + headerCells + '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
