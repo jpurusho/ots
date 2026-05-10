@@ -46,7 +46,7 @@
 | `general` | church_name, items_per_page, filename_template_report, filename_template_cards |
 | `ai` | scanner_model, use_bedrock, anthropic_api_key, api_total_input_tokens, api_total_output_tokens, api_total_scans, api_total_cost |
 | `drive` | google_drive_credentials, drive_images_folder_id, drive_reports_folder_id |
-| `email` | smtp_user, smtp_password, report_recipients |
+| `email` | smtp_user, smtp_password, report_recipients, email_groups (JSON array of {id,name,to,cc,bcc,subject}) |
 | `themes` | report_accent_color, card_accent_color (+ UI-only preset selector) |
 | `database` | read-only; live stats via `get_db_stats()` RPC |
 

@@ -460,6 +460,7 @@ export function ReportsPage() {
   const [emailGroupId, setEmailGroupId] = useState<string>('custom')
   const [emailTo, setEmailTo] = useState('')
   const [emailCc, setEmailCc] = useState('')
+  const [emailBcc, setEmailBcc] = useState('')
   const [emailSubject, setEmailSubject] = useState('')
 
   const { data: emailGroups = [] } = useQuery({
@@ -782,10 +783,12 @@ export function ReportsPage() {
     if (g) {
       setEmailTo(g.to)
       setEmailCc(g.cc)
+      setEmailBcc(g.bcc || '')
       setEmailSubject(g.subject ? resolveSubject(g.subject, emailTarget.offering?.offering_date) : defaultSubject)
     } else {
       setEmailTo(defaultRecipients || '')
       setEmailCc('')
+      setEmailBcc('')
       setEmailSubject(defaultSubject)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -806,12 +809,13 @@ export function ReportsPage() {
         body: JSON.stringify({
           to: emailTo.split(',').map((e: string) => e.trim()).filter(Boolean),
           cc: emailCc ? emailCc.split(',').map((e: string) => e.trim()).filter(Boolean) : [],
+          bcc: emailBcc ? emailBcc.split(',').map((e: string) => e.trim()).filter(Boolean) : [],
           subject: emailSubject,
           html_body: htmlBody,
         }),
       })
       const data = await resp.json()
-      if (data.success) { setEmailTarget(null); setEmailTo(''); setEmailCc(''); setEmailSubject('') }
+      if (data.success) { setEmailTarget(null); setEmailTo(''); setEmailCc(''); setEmailBcc(''); setEmailSubject('') }
       else alert(data.detail || data.error || 'Send failed')
     } catch (err) { alert(err instanceof Error ? err.message : 'Failed') }
     finally { setEmailSending(false) }
@@ -1093,7 +1097,7 @@ export function ReportsPage() {
                     {emailTarget.type === 'report' ? 'Email Report' : 'Email Card — ' + formatDate(emailTarget.offering?.offering_date || '')}
                   </span>
                 </div>
-                <button onClick={() => { setEmailTarget(null); setEmailTo(''); setEmailCc(''); setEmailSubject('') }}
+                <button onClick={() => { setEmailTarget(null); setEmailTo(''); setEmailCc(''); setEmailBcc(''); setEmailSubject('') }}
                   className="text-xs text-muted hover:text-foreground cursor-pointer">Cancel</button>
               </div>
               {emailGroups.length > 0 && (
@@ -1121,6 +1125,12 @@ export function ReportsPage() {
                 <label className="text-xs text-muted w-14 shrink-0">CC</label>
                 <input type="text" placeholder="Optional"
                   value={emailCc} onChange={e => setEmailCc(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted w-14 shrink-0">BCC</label>
+                <input type="text" placeholder="Optional"
+                  value={emailBcc} onChange={e => setEmailBcc(e.target.value)}
                   className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
               </div>
               <div className="flex justify-end">

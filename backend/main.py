@@ -936,6 +936,7 @@ class SendEmailRequest(BaseModel):
     subject: str
     html_body: str
     cc: list[str] = []
+    bcc: list[str] = []
     attachment_base64: Optional[str] = None
     attachment_filename: Optional[str] = None
     attachment_mime: str = "application/pdf"
@@ -980,6 +981,8 @@ async def send_email(req: SendEmailRequest):
         msg["To"] = ", ".join(req.to)
         if req.cc:
             msg["Cc"] = ", ".join(req.cc)
+        if req.bcc:
+            msg["Bcc"] = ", ".join(req.bcc)
 
         # HTML body
         html_part = MIMEText(req.html_body, "html")
@@ -995,7 +998,7 @@ async def send_email(req: SendEmailRequest):
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
         server.login(smtp_user, smtp_pass)
-        all_recipients = req.to + req.cc
+        all_recipients = req.to + req.cc + req.bcc
         server.sendmail(smtp_user, all_recipients, msg.as_string())
         server.quit()
 

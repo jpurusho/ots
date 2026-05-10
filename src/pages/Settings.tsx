@@ -21,6 +21,7 @@ export interface EmailGroup {
   name: string
   to: string
   cc: string
+  bcc: string
   subject: string
 }
 
@@ -604,7 +605,7 @@ const SUBJECT_VARS = ['{church}', '{period}']
 function EmailGroupsSection() {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<EmailGroup | null>(null)
-  const [form, setForm] = useState({ name: '', to: '', cc: '', subject: '' })
+  const [form, setForm] = useState({ name: '', to: '', cc: '', bcc: '', subject: '' })
   const [saving, setSaving] = useState(false)
 
   const { data: groups = [] } = useQuery({
@@ -628,13 +629,13 @@ function EmailGroupsSection() {
   }
 
   const startAdd = () => {
-    setEditing({ id: '', name: '', to: '', cc: '', subject: '' })
-    setForm({ name: '', to: '', cc: '', subject: '' })
+    setEditing({ id: '', name: '', to: '', cc: '', bcc: '', subject: '' })
+    setForm({ name: '', to: '', cc: '', bcc: '', subject: '' })
   }
 
   const startEdit = (g: EmailGroup) => {
     setEditing(g)
-    setForm({ name: g.name, to: g.to, cc: g.cc, subject: g.subject })
+    setForm({ name: g.name, to: g.to, cc: g.cc, bcc: g.bcc || '', subject: g.subject })
   }
 
   const handleSave = async () => {
@@ -644,6 +645,7 @@ function EmailGroupsSection() {
       name: form.name.trim(),
       to: form.to.trim(),
       cc: form.cc.trim(),
+      bcc: form.bcc.trim(),
       subject: form.subject.trim(),
     }
     const next = editing?.id
@@ -706,6 +708,12 @@ function EmailGroupsSection() {
               placeholder="Optional"
               className="mt-1 w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
           </div>
+          <div>
+            <label className="text-xs font-medium text-muted">BCC (comma-separated)</label>
+            <input value={form.bcc} onChange={e => setForm(f => ({ ...f, bcc: e.target.value }))}
+              placeholder="Optional"
+              className="mt-1 w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+          </div>
           <div className="flex items-center gap-2">
             <button onClick={handleSave} disabled={saving || !form.name.trim() || !form.to.trim()}
               className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:opacity-50">
@@ -726,6 +734,7 @@ function EmailGroupsSection() {
                 <p className="text-sm font-medium">{g.name}</p>
                 <p className="text-xs text-muted truncate">To: {g.to}</p>
                 {g.cc && <p className="text-xs text-muted truncate">CC: {g.cc}</p>}
+                {g.bcc && <p className="text-xs text-muted truncate">BCC: {g.bcc}</p>}
                 {g.subject && <p className="text-xs text-muted truncate">Subject: {g.subject}</p>}
               </div>
               <div className="flex items-center gap-3 flex-shrink-0 pt-0.5">
