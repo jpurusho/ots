@@ -2,7 +2,7 @@ import { getBackendUrl } from '@/lib/backend'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Copy, Check, RefreshCw } from 'lucide-react'
+import { Save, Loader2, CheckCircle, TestTube, Eye, EyeOff, FolderOpen, X, Copy, Check, RefreshCw, Plus, Pencil, Trash2 } from 'lucide-react'
 import { DriveFolderPicker } from '@/components/DriveFolderPicker'
 import { useTheme } from '@/lib/theme-context'
 import { useAccentColors } from '@/lib/accent-colors'
@@ -14,6 +14,14 @@ interface Setting {
   category: string | null
   label: string | null
   description: string | null
+}
+
+export interface EmailGroup {
+  id: string
+  name: string
+  to: string
+  cc: string
+  subject: string
 }
 
 const TABS = [
@@ -305,6 +313,7 @@ export function SettingsPage() {
       ) : activeTab === 'database' ? (
         <DatabaseTab />
       ) : (
+        <>
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="divide-y divide-border">
             {tabSettings.filter(s => !USAGE_FIELDS.includes(s.key)).map(setting => {
@@ -580,6 +589,157 @@ export function SettingsPage() {
               </button>
             </div>
           </div>
+        </div>
+        {activeTab === 'email' && <EmailGroupsSection />}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Email Groups section ───────────────────────────────────────────────────
+
+const SUBJECT_VARS = ['{church}', '{period}']
+
+function EmailGroupsSection() {
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState<EmailGroup | null>(null)
+  const [form, setForm] = useState({ name: '', to: '', cc: '', subject: '' })
+  const [saving, setSaving] = useState(false)
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['email_groups'],
+    queryFn: async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'email_groups').single()
+      if (!data?.value) return []
+      try { return JSON.parse(data.value) as EmailGroup[] } catch { return [] }
+    },
+  })
+
+  const persistGroups = async (next: EmailGroup[]) => {
+    setSaving(true)
+    try {
+      await supabase.from('app_settings').upsert(
+        { key: 'email_groups', value: JSON.stringify(next), category: 'email', label: 'Email Groups', description: 'Saved recipient groups for email reports' },
+        { onConflict: 'key' }
+      )
+      queryClient.invalidateQueries({ queryKey: ['email_groups'] })
+    } finally { setSaving(false) }
+  }
+
+  const startAdd = () => {
+    setEditing({ id: '', name: '', to: '', cc: '', subject: '' })
+    setForm({ name: '', to: '', cc: '', subject: '' })
+  }
+
+  const startEdit = (g: EmailGroup) => {
+    setEditing(g)
+    setForm({ name: g.name, to: g.to, cc: g.cc, subject: g.subject })
+  }
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.to.trim()) return
+    const group: EmailGroup = {
+      id: editing?.id || crypto.randomUUID(),
+      name: form.name.trim(),
+      to: form.to.trim(),
+      cc: form.cc.trim(),
+      subject: form.subject.trim(),
+    }
+    const next = editing?.id
+      ? groups.map(g => g.id === editing.id ? group : g)
+      : [...groups, group]
+    await persistGroups(next)
+    setEditing(null)
+  }
+
+  const handleDelete = (id: string) => persistGroups(groups.filter(g => g.id !== id))
+
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium">Email Groups</h3>
+          <p className="text-xs text-muted mt-0.5">Named recipient lists you can pick when sending reports</p>
+        </div>
+        <button onClick={startAdd}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted-foreground/10 cursor-pointer">
+          <Plus className="w-4 h-4" /> Add Group
+        </button>
+      </div>
+
+      {editing !== null && (
+        <div className="px-5 py-4 border-b border-border bg-muted/20 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted">Group Name <span className="text-destructive">*</span></label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Finance Committee"
+                className="mt-1 w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted">Subject</label>
+              <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
+                placeholder="{church} — {period} Offering Report"
+                className="mt-1 w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[10px] text-muted">Insert:</span>
+                {SUBJECT_VARS.map(v => (
+                  <button key={v} type="button"
+                    onClick={() => setForm(f => ({ ...f, subject: f.subject + v }))}
+                    className="text-[10px] font-mono bg-muted/20 hover:bg-primary/10 hover:text-primary border border-border/60 px-1 py-0.5 rounded cursor-pointer">
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted">To (comma-separated) <span className="text-destructive">*</span></label>
+            <input value={form.to} onChange={e => setForm(f => ({ ...f, to: e.target.value }))}
+              placeholder="treasurer@church.org, pastor@church.org"
+              className="mt-1 w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted">CC (comma-separated)</label>
+            <input value={form.cc} onChange={e => setForm(f => ({ ...f, cc: e.target.value }))}
+              placeholder="Optional"
+              className="mt-1 w-full px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={handleSave} disabled={saving || !form.name.trim() || !form.to.trim()}
+              className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : null} Save Group
+            </button>
+            <button onClick={() => setEditing(null)} className="text-sm text-muted hover:text-foreground cursor-pointer">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {groups.length === 0 && editing === null ? (
+        <p className="px-5 py-4 text-sm text-muted">No groups yet. Create one to quickly address report emails.</p>
+      ) : (
+        <div className="divide-y divide-border">
+          {groups.map(g => (
+            <div key={g.id} className="px-5 py-3 flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-sm font-medium">{g.name}</p>
+                <p className="text-xs text-muted truncate">To: {g.to}</p>
+                {g.cc && <p className="text-xs text-muted truncate">CC: {g.cc}</p>}
+                {g.subject && <p className="text-xs text-muted truncate">Subject: {g.subject}</p>}
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0 pt-0.5">
+                <button onClick={() => startEdit(g)}
+                  className="text-muted hover:text-foreground cursor-pointer" title="Edit">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => handleDelete(g.id)}
+                  className="text-muted hover:text-destructive cursor-pointer" title="Delete">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { generateAndDownloadPdf, generateAndUploadPdf } from '@/lib/pdf-utils'
 import { useAccentColors } from '@/lib/accent-colors'
+import type { EmailGroup } from './Settings'
 
 
 interface ApprovedOffering {
@@ -456,7 +457,19 @@ export function ReportsPage() {
 
   const [emailSending, setEmailSending] = useState(false)
   const [emailTarget, setEmailTarget] = useState<{ type: string; offering?: ApprovedOffering } | null>(null)
-  const [emailRecipients, setEmailRecipients] = useState('')
+  const [emailGroupId, setEmailGroupId] = useState<string>('custom')
+  const [emailTo, setEmailTo] = useState('')
+  const [emailCc, setEmailCc] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+
+  const { data: emailGroups = [] } = useQuery({
+    queryKey: ['email_groups'],
+    queryFn: async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'email_groups').single()
+      if (!data?.value) return [] as EmailGroup[]
+      try { return JSON.parse(data.value) as EmailGroup[] } catch { return [] as EmailGroup[] }
+    },
+  })
   const [showMissing, setShowMissing] = useState(true)
   const [displayMode, setDisplayMode] = useState<'table' | 'cards'>('table')
 
@@ -753,28 +766,52 @@ export function ReportsPage() {
     }
   }
 
-  // Initialize email recipients from defaults when target changes
-  useEffect(() => {
-    if (emailTarget && defaultRecipients && !emailRecipients) {
-      setEmailRecipients(defaultRecipients)
-    }
-  }, [emailTarget, defaultRecipients])
+  // Resolve subject template variables
+  const resolveSubject = (template: string, offeringDate?: string | null) =>
+    template
+      .replace('{church}', churchName || title)
+      .replace('{period}', offeringDate ? 'Week of ' + formatDate(offeringDate) : periodLabel)
 
-  const sendEmail = async (subject: string, htmlBody: string) => {
-    if (!emailRecipients.trim()) return
+  // Pre-fill email fields when panel opens or group changes
+  useEffect(() => {
+    if (!emailTarget) return
+    const defaultSubject = emailTarget.type === 'report'
+      ? title + ' — ' + periodLabel
+      : title + ' — Week of ' + formatDate(emailTarget.offering?.offering_date || '')
+    const g = emailGroupId !== 'custom' ? emailGroups.find(g => g.id === emailGroupId) : null
+    if (g) {
+      setEmailTo(g.to)
+      setEmailCc(g.cc)
+      setEmailSubject(g.subject ? resolveSubject(g.subject, emailTarget.offering?.offering_date) : defaultSubject)
+    } else {
+      setEmailTo(defaultRecipients || '')
+      setEmailCc('')
+      setEmailSubject(defaultSubject)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailTarget, emailGroupId])
+
+  const handleGroupChange = (groupId: string) => {
+    setEmailGroupId(groupId)
+    // effect above handles field updates
+  }
+
+  const sendEmail = async (htmlBody: string) => {
+    if (!emailTo.trim()) return
     setEmailSending(true)
     try {
       const resp = await fetch((await getBackendUrl()) + '/api/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: emailRecipients.split(',').map((e: string) => e.trim()).filter(Boolean),
-          subject,
+          to: emailTo.split(',').map((e: string) => e.trim()).filter(Boolean),
+          cc: emailCc ? emailCc.split(',').map((e: string) => e.trim()).filter(Boolean) : [],
+          subject: emailSubject,
           html_body: htmlBody,
         }),
       })
       const data = await resp.json()
-      if (data.success) { setEmailTarget(null); setEmailRecipients('') }
+      if (data.success) { setEmailTarget(null); setEmailTo(''); setEmailCc(''); setEmailSubject('') }
       else alert(data.detail || data.error || 'Send failed')
     } catch (err) { alert(err instanceof Error ? err.message : 'Failed') }
     finally { setEmailSending(false) }
@@ -1048,32 +1085,56 @@ export function ReportsPage() {
 
           {/* Inline email panel */}
           {emailTarget && (
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-              <div className="flex items-center gap-3">
-                <Mail className="w-4 h-4 text-primary flex-shrink-0" />
-                <input type="text" placeholder="Recipients (comma-separated emails)"
-                  value={emailRecipients}
-                  onChange={e => setEmailRecipients(e.target.value)}
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-primary flex-shrink-0" />
+                  <span className="text-sm font-medium text-primary">
+                    {emailTarget.type === 'report' ? 'Email Report' : 'Email Card — ' + formatDate(emailTarget.offering?.offering_date || '')}
+                  </span>
+                </div>
+                <button onClick={() => { setEmailTarget(null); setEmailTo(''); setEmailCc(''); setEmailSubject('') }}
+                  className="text-xs text-muted hover:text-foreground cursor-pointer">Cancel</button>
+              </div>
+              {emailGroups.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted w-14 shrink-0">Group</label>
+                  <select value={emailGroupId} onChange={e => handleGroupChange(e.target.value)}
+                    className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-border bg-background">
+                    <option value="custom">Custom</option>
+                    {emailGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted w-14 shrink-0">Subject</label>
+                <input type="text" value={emailSubject} onChange={e => setEmailSubject(e.target.value)}
                   className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
-                <button disabled={emailSending || !emailRecipients.trim()}
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted w-14 shrink-0">To</label>
+                <input type="text" placeholder="email@example.com, ..."
+                  value={emailTo} onChange={e => setEmailTo(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted w-14 shrink-0">CC</label>
+                <input type="text" placeholder="Optional"
+                  value={emailCc} onChange={e => setEmailCc(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+              </div>
+              <div className="flex justify-end">
+                <button disabled={emailSending || !emailTo.trim()}
                   onClick={() => {
                     const o = emailTarget.offering
-                    if (emailTarget.type === 'report') {
-                      sendEmail(title + ' — ' + periodLabel, buildEmailReportHtml())
-                    } else if (o) {
-                      sendEmail(title + ' — Week of ' + formatDate(o.offering_date), buildEmailCard(title, o, catList, accentColors.card))
-                    }
+                    if (emailTarget.type === 'report') sendEmail(buildEmailReportHtml())
+                    else if (o) sendEmail(buildEmailCard(title, o, catList, accentColors.card))
                   }}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
                   {emailSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
                   Send
                 </button>
-                <button onClick={() => { setEmailTarget(null); setEmailRecipients('') }}
-                  className="text-xs text-muted hover:text-foreground cursor-pointer">Cancel</button>
               </div>
-              <p className="text-[10px] text-muted mt-1.5 ml-8">
-                {emailTarget.type === 'report' ? 'Sending full report table' : 'Sending weekly offering card for ' + formatDate(emailTarget.offering?.offering_date || '')}
-              </p>
             </div>
           )}
 
