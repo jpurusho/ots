@@ -1,0 +1,32 @@
+name: Organic Activity
+
+# Simulates varied app usage to keep Supabase active.
+# Runs at different times than keepalive/integration tests.
+on:
+  schedule:
+    - cron: '39 7 * * *'    # 7:39 AM UTC daily
+    - cron: '14 15 * * *'   # 3:14 PM UTC daily
+  workflow_dispatch:
+
+jobs:
+  activity:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: prod
+            url_secret: SUPABASE_PROD_URL
+            key_secret: SUPABASE_PROD_SERVICE_KEY
+          - name: test
+            url_secret: SUPABASE_TEST_URL
+            key_secret: SUPABASE_TEST_SERVICE_KEY
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simulate organic usage on ${{ matrix.name }}
+        env:
+          SUPABASE_URL: ${{ secrets[matrix.url_secret] }}
+          SUPABASE_SERVICE_KEY: ${{ secrets[matrix.key_secret] }}
+        run: |
+          # Random initial delay (0-60s) so runs aren't at exactly the same second
+          sleep $((RANDOM % 60))
+          python3 scripts/organic-activity.py
