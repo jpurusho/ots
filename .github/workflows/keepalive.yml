@@ -1,0 +1,46 @@
+name: Keep Supabase Alive
+
+# Runs daily at a random-ish time to prevent free-tier pause (7 days inactivity)
+on:
+  schedule:
+    - cron: '23 14 * * *'   # 2:23 PM UTC daily
+    - cron: '47 6 * * 3,6'  # 6:47 AM UTC on Wed & Sat (extra pings)
+  workflow_dispatch:         # Manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: prod
+            url_secret: SUPABASE_PROD_URL
+            key_secret: SUPABASE_PROD_ANON_KEY
+          - name: test
+            url_secret: SUPABASE_TEST_URL
+            key_secret: SUPABASE_TEST_ANON_KEY
+    steps:
+      - name: Ping ${{ matrix.name }} database
+        env:
+          SUPABASE_URL: ${{ secrets[matrix.url_secret] }}
+          SUPABASE_KEY: ${{ secrets[matrix.key_secret] }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "Skipping ${{ matrix.name }} — secrets not configured"
+            exit 0
+          fi
+
+          echo "Pinging ${{ matrix.name }}..."
+
+          # Read from app_settings (lightweight query that touches the DB)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${SUPABASE_URL}/rest/v1/app_settings?key=eq.church_name&select=key" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}")
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✓ ${{ matrix.name }} is alive (HTTP $HTTP_CODE)"
+          else
+            echo "✗ ${{ matrix.name }} returned HTTP $HTTP_CODE"
+            exit 1
+          fi
