@@ -18,10 +18,9 @@ jobs:
           - name: prod
             url_secret: SUPABASE_PROD_URL
             key_secret: SUPABASE_PROD_ANON_KEY
-          # Add more projects here as needed:
-          # - name: test
-          #   url_secret: SUPABASE_TEST_URL
-          #   key_secret: SUPABASE_TEST_ANON_KEY
+          - name: test
+            url_secret: SUPABASE_TEST_URL
+            key_secret: SUPABASE_TEST_ANON_KEY
     steps:
       - name: Ping ${{ matrix.name }} database
         env:
