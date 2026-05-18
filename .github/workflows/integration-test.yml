@@ -1,0 +1,33 @@
+name: Integration Tests (DB, Auth, Storage)
+
+# Runs daily and on manual trigger. Exercises all Supabase services
+# to verify they're working AND keep the projects active.
+on:
+  schedule:
+    - cron: '31 10 * * *'   # 10:31 AM UTC daily
+    - cron: '12 22 * * *'   # 10:12 PM UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: prod
+            url_secret: SUPABASE_PROD_URL
+            key_secret: SUPABASE_PROD_SERVICE_KEY
+          - name: test
+            url_secret: SUPABASE_TEST_URL
+            key_secret: SUPABASE_TEST_SERVICE_KEY
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests on ${{ matrix.name }}
+        env:
+          SUPABASE_URL: ${{ secrets[matrix.url_secret] }}
+          SUPABASE_SERVICE_KEY: ${{ secrets[matrix.key_secret] }}
+        run: python3 scripts/integration-test.py
