@@ -1,10 +1,12 @@
 name: Keep Supabase Alive
 
-# Runs daily at a random-ish time to prevent free-tier pause (7 days inactivity)
+# Pings Supabase multiple times daily to prevent free-tier pause (7 days inactivity)
 on:
   schedule:
-    - cron: '23 14 * * *'   # 2:23 PM UTC daily
-    - cron: '47 6 * * 3,6'  # 6:47 AM UTC on Wed & Sat (extra pings)
+    - cron: '17 3 * * *'    # 3:17 AM UTC daily
+    - cron: '42 9 * * *'    # 9:42 AM UTC daily
+    - cron: '8 16 * * *'    # 4:08 PM UTC daily
+    - cron: '53 21 * * *'   # 9:53 PM UTC daily
   workflow_dispatch:         # Manual trigger
 
 jobs:
@@ -16,9 +18,10 @@ jobs:
           - name: prod
             url_secret: SUPABASE_PROD_URL
             key_secret: SUPABASE_PROD_ANON_KEY
-          - name: test
-            url_secret: SUPABASE_TEST_URL
-            key_secret: SUPABASE_TEST_ANON_KEY
+          # Add more projects here as needed:
+          # - name: test
+          #   url_secret: SUPABASE_TEST_URL
+          #   key_secret: SUPABASE_TEST_ANON_KEY
     steps:
       - name: Ping ${{ matrix.name }} database
         env:
