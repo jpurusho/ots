@@ -497,11 +497,20 @@ export function ReviewPage() {
       const o = offerings?.find(o => o.id === id)
       logActivity(appUser?.email || null, 'approve',
         `Approved ${o?.filename || `offering #${id}`}`, 'offering', id)
+      return id
     },
-    onSuccess: () => {
+    onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: ['offerings'] })
       setSelectedId(null)
       setEditMode(false)
+      // Trigger auto-email in background (fire-and-forget)
+      getBackendUrl().then(url =>
+        fetch(`${url}/api/automation/auto-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ offering_id: id }),
+        }).catch(() => {})
+      )
     },
   })
 

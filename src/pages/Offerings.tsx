@@ -5,7 +5,7 @@ import { useUploadManager } from '@/lib/upload-manager'
 import { Link } from 'react-router-dom'
 import {
   Upload, X, FileImage, FileText, CheckCircle, XCircle,
-  ArrowRight, ImagePlus, Sparkles, CloudDownload, Loader2,
+  ArrowRight, ImagePlus, Sparkles, CloudDownload, Loader2, Zap,
 } from 'lucide-react'
 
 
@@ -210,6 +210,9 @@ export function OfferingsPage() {
       {/* Import from Google Drive */}
       <DriveImportSection />
 
+      {/* Run Pipeline (admin only) */}
+      {appUser?.role === 'admin' && <RunPipelineSection />}
+
       {/* Empty state */}
       {files.length === 0 && results.length === 0 && !uploadState.uploading && (
         <div className="rounded-xl border border-border/50 bg-card/50 p-6">
@@ -315,6 +318,90 @@ function DriveImportSection() {
                   )}
                   {r.reason && <span className="ml-auto flex-shrink-0">{r.reason}</span>}
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function RunPipelineSection() {
+  const [running, setRunning] = useState(false)
+  const [phase, setPhase] = useState('')
+  const [result, setResult] = useState<{
+    imported: number; scanned: number; auto_approved: number; emails_sent: number; errors: string[]
+  } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleRun = async () => {
+    setRunning(true)
+    setResult(null)
+    setError(null)
+    setPhase('Running full pipeline: Import → Scan → Approve → Email...')
+    try {
+      const resp = await fetch(`${await getBackendUrl()}/api/automation/run-pipeline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_approve: true, auto_email: true }),
+      })
+      const data = await resp.json()
+      if (data.detail) throw new Error(data.detail)
+      setResult(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Pipeline failed')
+    } finally {
+      setRunning(false)
+      setPhase('')
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Zap className="w-4 h-4 text-warning" />
+          <div>
+            <p className="text-sm font-medium">Run Pipeline</p>
+            <p className="text-[10px] text-muted">Import → Scan → Auto-approve → Email</p>
+          </div>
+        </div>
+        <button onClick={handleRun} disabled={running}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-warning/10 text-warning border border-warning/30 text-sm font-medium hover:bg-warning/20 cursor-pointer disabled:opacity-50">
+          {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+          {running ? 'Running...' : 'Run'}
+        </button>
+      </div>
+
+      {running && phase && (
+        <div className="px-4 py-2 border-t border-border">
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-warning" />
+            <span className="text-xs text-muted">{phase}</span>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="px-4 py-2 border-t border-border bg-destructive/5 text-destructive text-xs">
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className="px-4 py-3 border-t border-border">
+          <div className="flex flex-wrap gap-3 text-xs">
+            <span className="text-success">Imported: <strong>{result.imported}</strong></span>
+            <span className="text-primary">Scanned: <strong>{result.scanned}</strong></span>
+            <span className="text-warning">Approved: <strong>{result.auto_approved}</strong></span>
+            <span className="text-primary">Emails: <strong>{result.emails_sent}</strong></span>
+          </div>
+          {result.errors.length > 0 && (
+            <div className="mt-2 space-y-0.5">
+              {result.errors.map((e, i) => (
+                <p key={i} className="text-[10px] text-destructive">{e}</p>
               ))}
             </div>
           )}

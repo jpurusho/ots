@@ -30,6 +30,7 @@ const TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'drive', label: 'Google Drive' },
   { id: 'email', label: 'Email' },
+  { id: 'automation', label: 'Automation' },
   { id: 'themes', label: 'Themes' },
   { id: 'database', label: 'Database' },
 ]
@@ -313,6 +314,8 @@ export function SettingsPage() {
         <ThemesTab />
       ) : activeTab === 'database' ? (
         <DatabaseTab />
+      ) : activeTab === 'automation' ? (
+        <AutomationTab />
       ) : (
         <>
         <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -597,6 +600,204 @@ export function SettingsPage() {
     </div>
   )
 }
+
+// ─── Automation Tab ─────────────────────────────────────────────────────────
+
+function AutomationTab() {
+  const queryClient = useQueryClient()
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  // Load automation settings
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('app_settings').select('*').order('key')
+      if (error) throw error
+      return data as Setting[]
+    },
+  })
+
+  // Load email groups for the dropdown
+  const { data: emailGroups } = useQuery({
+    queryKey: ['email-groups'],
+    queryFn: async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'email_groups').single()
+      if (data?.value) {
+        try { return JSON.parse(data.value) as EmailGroup[] } catch { return [] }
+      }
+      return []
+    },
+  })
+
+  const getSetting = (key: string) => settings?.find(s => s.key === key)?.value || ''
+
+  const [autoEmailEnabled, setAutoEmailEnabled] = useState(false)
+  const [autoEmailMode, setAutoEmailMode] = useState<'per_approval' | 'weekly_batch'>('per_approval')
+  const [autoEmailGroupId, setAutoEmailGroupId] = useState('')
+  const [autoApproveEnabled, setAutoApproveEnabled] = useState(false)
+  const [autoApproveMinTotal, setAutoApproveMinTotal] = useState('0')
+  const [autoApproveRequireDate, setAutoApproveRequireDate] = useState(true)
+
+  // Populate from DB
+  useEffect(() => {
+    if (!settings) return
+    setAutoEmailEnabled(getSetting('auto_email_enabled') === 'true')
+    setAutoEmailMode((getSetting('auto_email_mode') || 'per_approval') as 'per_approval' | 'weekly_batch')
+    setAutoEmailGroupId(getSetting('auto_email_group_id'))
+    setAutoApproveEnabled(getSetting('auto_approve_enabled') === 'true')
+    setAutoApproveMinTotal(getSetting('auto_approve_min_total') || '0')
+    setAutoApproveRequireDate(getSetting('auto_approve_require_date') !== 'false')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings])
+
+  const handleSave = async () => {
+    setSaving(true)
+    const updates = [
+      { key: 'auto_email_enabled', value: String(autoEmailEnabled), category: 'automation', label: 'Auto-email enabled', description: 'Automatically send email when offerings are approved' },
+      { key: 'auto_email_mode', value: autoEmailMode, category: 'automation', label: 'Auto-email mode', description: 'per_approval: send on each approval; weekly_batch: send when all for the week are approved' },
+      { key: 'auto_email_group_id', value: autoEmailGroupId, category: 'automation', label: 'Auto-email group', description: 'Email group to send auto-emails to' },
+      { key: 'auto_approve_enabled', value: String(autoApproveEnabled), category: 'automation', label: 'Auto-approve enabled', description: 'Automatically approve offerings meeting confidence threshold' },
+      { key: 'auto_approve_min_total', value: autoApproveMinTotal, category: 'automation', label: 'Min total for auto-approve', description: 'Minimum offering total to auto-approve' },
+      { key: 'auto_approve_require_date', value: String(autoApproveRequireDate), category: 'automation', label: 'Require date for auto-approve', description: 'Only auto-approve if date was detected' },
+    ]
+
+    for (const u of updates) {
+      await supabase.from('app_settings').upsert(
+        { key: u.key, value: u.value, category: u.category, label: u.label, description: u.description },
+        { onConflict: 'key' }
+      )
+    }
+
+    setSaving(false)
+    setSaved(true)
+    queryClient.invalidateQueries({ queryKey: ['settings'] })
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Auto-Email Section */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-5 py-4 border-b border-border">
+          <h3 className="text-sm font-semibold">Auto-Email on Approval</h3>
+          <p className="text-xs text-muted mt-0.5">Automatically send offering card emails when offerings are approved</p>
+        </div>
+        <div className="divide-y divide-border">
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Enable auto-email</p>
+              <p className="text-xs text-muted">Send card email automatically after approval</p>
+            </div>
+            <button onClick={() => setAutoEmailEnabled(!autoEmailEnabled)}
+              className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${autoEmailEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoEmailEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          {autoEmailEnabled && (
+            <>
+              <div className="px-5 py-4">
+                <p className="text-sm font-medium mb-2">Email mode</p>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" checked={autoEmailMode === 'per_approval'}
+                      onChange={() => setAutoEmailMode('per_approval')}
+                      className="accent-primary" />
+                    <span className="text-sm">Per approval</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" checked={autoEmailMode === 'weekly_batch'}
+                      onChange={() => setAutoEmailMode('weekly_batch')}
+                      className="accent-primary" />
+                    <span className="text-sm">Weekly batch</span>
+                  </label>
+                </div>
+                <p className="text-xs text-muted mt-1">
+                  {autoEmailMode === 'per_approval'
+                    ? 'Send immediately after each offering is approved'
+                    : 'Send once all offerings for the week are approved'}
+                </p>
+              </div>
+
+              <div className="px-5 py-4">
+                <p className="text-sm font-medium mb-2">Email group</p>
+                <select value={autoEmailGroupId}
+                  onChange={e => setAutoEmailGroupId(e.target.value)}
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-background">
+                  <option value="">Select a group...</option>
+                  {(emailGroups || []).map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted mt-1">Configure email groups in the Email tab</p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Auto-Approve Section */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-5 py-4 border-b border-border">
+          <h3 className="text-sm font-semibold">Auto-Approve (Confidence Threshold)</h3>
+          <p className="text-xs text-muted mt-0.5">Automatically approve scanned offerings that meet quality criteria</p>
+        </div>
+        <div className="divide-y divide-border">
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Enable auto-approve</p>
+              <p className="text-xs text-muted">Used by the Run Pipeline feature</p>
+            </div>
+            <button onClick={() => setAutoApproveEnabled(!autoApproveEnabled)}
+              className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${autoApproveEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoApproveEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          {autoApproveEnabled && (
+            <>
+              <div className="px-5 py-4">
+                <p className="text-sm font-medium mb-2">Minimum total ($)</p>
+                <input type="number" value={autoApproveMinTotal}
+                  onChange={e => setAutoApproveMinTotal(e.target.value)}
+                  className="w-32 rounded-lg border border-border px-3 py-2 text-sm bg-background"
+                  min="0" step="1" />
+                <p className="text-xs text-muted mt-1">Only auto-approve if scan total exceeds this amount (0 = any positive amount)</p>
+              </div>
+
+              <div className="px-5 py-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Require date detected</p>
+                  <p className="text-xs text-muted">Only auto-approve if offering date was found in scan</p>
+                </div>
+                <button onClick={() => setAutoApproveRequireDate(!autoApproveRequireDate)}
+                  className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${autoApproveRequireDate ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoApproveRequireDate ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Save */}
+      <div className="flex items-center justify-end gap-3">
+        {saved && (
+          <span className="flex items-center gap-1 text-sm text-success">
+            <CheckCircle className="w-4 h-4" /> Saved
+          </span>
+        )}
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Save
+        </button>
+      </div>
+    </div>
+  )
+}
+
 
 // ─── Email Groups section ───────────────────────────────────────────────────
 
