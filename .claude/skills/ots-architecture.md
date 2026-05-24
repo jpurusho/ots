@@ -19,7 +19,7 @@
 | `/reports` | Reports — monthly table reports + weekly cards, PDF/email/Drive | All |
 | `/checks` | Checks — bank check tracking, contribution statements | All |
 | `/about` | About — version, update check/download | All |
-| `/settings` | Settings — admin configuration (6 tabs) | Admin only |
+| `/settings` | Settings — admin configuration (7 tabs) | Admin only |
 | `/users` | Users — manage users, generate/email invite codes | Admin only |
 | `/activity` | Activity — audit log with pagination and purge | Admin only |
 | `/invite` | Invite — operator setup wizard (enter invite code) | Unauthenticated |
@@ -47,6 +47,7 @@
 | `ai` | scanner_model, use_bedrock, anthropic_api_key, api_total_input_tokens, api_total_output_tokens, api_total_scans, api_total_cost |
 | `drive` | google_drive_credentials, drive_images_folder_id, drive_reports_folder_id |
 | `email` | smtp_user, smtp_password, report_recipients, email_groups (JSON array of {id,name,to,cc,bcc,subject}) |
+| `automation` | auto_email_enabled, auto_email_mode (per_approval/weekly_batch), auto_email_group_id, auto_approve_enabled, auto_approve_min_total, auto_approve_require_date |
 | `themes` | report_accent_color, card_accent_color (+ UI-only preset selector) |
 | `database` | read-only; live stats via `get_db_stats()` RPC |
 
@@ -59,6 +60,7 @@
 
 ## Python Backend API (FastAPI)
 - `POST /api/scan` — AI scan of offering image
+- `POST /api/scan-all` — scan all uploaded offerings pending scan
 - `POST /api/pdf/generate` — monthly table report PDF (optional Drive upload)
 - `POST /api/pdf/generate-cards` — weekly cards PDF (optional Drive upload per card)
 - `POST /api/drive/import` — import images from Google Drive folder
@@ -67,6 +69,8 @@
 - `GET  /api/drive/folder-info` — resolve folder ID → name/path
 - `POST /api/email/send` — send report email via SMTP
 - `POST /api/email/test` — send test email
+- `POST /api/automation/auto-email` — send HTML card email on approval (per_approval or weekly_batch mode)
+- `POST /api/automation/run-pipeline` — full pipeline: Drive import → scan → auto-approve → email
 
 Filename template variables: `{church}`, `{period}`, `{date}`, `{year}`, `{month}` — resolved in `_resolve_filename()`.
 
