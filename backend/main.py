@@ -330,7 +330,7 @@ from drive_service import (
 
 def _get_setting(key: str) -> str:
     """Get a setting value from Supabase."""
-    result = supabase.table("app_settings").select("value").eq("key", key).single().execute()
+    result = supabase.table("app_settings").select("value").eq("key", key).maybe_single().execute()
     return result.data.get("value", "") if result.data else ""
 
 
@@ -1311,6 +1311,18 @@ async def run_pipeline(req: RunPipelineRequest):
         summary["errors"].append(f"Drive import: {e.detail}")
     except Exception as e:
         summary["errors"].append(f"Drive import: {str(e)}")
+
+    # Step 1b: Scan any manually-uploaded offerings still in "uploaded" status
+    try:
+        uploaded = supabase.table("offerings").select("id").eq("status", "uploaded").execute()
+        for o in (uploaded.data or []):
+            try:
+                await scan_offering(ScanRequest(offering_id=o["id"]))
+                summary["scanned"] += 1
+            except Exception as e:
+                summary["errors"].append(f"Scan #{o['id']}: {str(e)}")
+    except Exception as e:
+        summary["errors"].append(f"Scan uploaded: {str(e)}")
 
     # Step 2: Auto-approve scanned offerings meeting threshold
     if req.auto_approve and auto_approve_enabled:
