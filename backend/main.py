@@ -192,6 +192,7 @@ async def scan_offering(req: ScanRequest):
     scan_data = item.get("scan_data", {})
 
     update = {
+        "title": item.get("title"),
         "offering_date": item.get("date"),
         "date_conf": item.get("date_confidence"),
         "general": categories.get("general") or 0,

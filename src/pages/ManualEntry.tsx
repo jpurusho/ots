@@ -39,6 +39,7 @@ export function ManualEntryPage() {
   const [saved, setSaved] = useState(false)
 
   const [form, setForm] = useState({
+    title: '',
     offering_date: new Date().toISOString().split('T')[0],
     general: '',
     cash: '',
@@ -53,6 +54,7 @@ export function ManualEntryPage() {
       const { error } = await supabase
         .from('offerings')
         .insert({
+          title: form.title || null,
           offering_date: form.offering_date,
           general: computedValues.general,
           cash: computedValues.cash,
@@ -73,6 +75,7 @@ export function ManualEntryPage() {
         `Manual entry for ${form.offering_date} — $${total.toFixed(2)}`, 'offering')
       setSaved(true)
       setForm({
+        title: '',
         offering_date: new Date().toISOString().split('T')[0],
         general: '', cash: '', sunday_school: '', building_fund: '', misc: '', notes: '',
       })
@@ -112,6 +115,15 @@ export function ManualEntryPage() {
 
       <form onSubmit={handleSubmit} className="rounded-xl border border-border bg-card overflow-hidden max-w-lg">
         <div className="p-5 space-y-4">
+          {/* Title */}
+          <div>
+            <label className="text-sm font-medium">Title (Optional)</label>
+            <input type="text" placeholder="e.g., Operation Kid to Kid, Building Fund Drive"
+              value={form.title}
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-border bg-background" />
+          </div>
+
           {/* Date */}
           <div>
             <label className="text-sm font-medium">Offering Date</label>

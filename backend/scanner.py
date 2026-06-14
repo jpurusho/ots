@@ -82,6 +82,7 @@ Return a JSON array with one object per slip (even if only 1):
   {{
     "slip_number": 1,
     "type": "offering_slip",
+    "title": "<description from top of slip, e.g. 'CCI San Ramon Operation Kid to Kid (NDS)'>",
     "date": "MM/DD/YYYY",
     "date_confidence": "high|medium|low",
     "sections": {{
@@ -126,6 +127,15 @@ SECTION EXTRACTION RULES:
 - "general" = general_checks.total (checks only)
 - "cash" = general_cash.total (cash denominations only)
 - Total = general + cash + sunday_school + building_fund + misc
+
+TITLE EXTRACTION:
+- Look for a description or label at the top of the slip (usually handwritten above the Cash/Check sections)
+- Examples: "CCI San Ramon Operation Kid to Kid (NDS)", "Youth Group Fundraiser", "Building Fund Drive"
+- If present, extract it as "title". If no clear title/description exists, set to null
+
+DATE HANDLING:
+- If NO date is visible on the slip, set "date": null and "date_confidence": "none"
+- The system will auto-fill with current date for review
 
 ACCURACY VERIFICATION (CRITICAL):
 1. Read EVERY row/entry from the image carefully
@@ -332,11 +342,20 @@ def scan_image(image_bytes: bytes, media_type: str, filename: str,
         return [{"type": "not_offering", "filename": filename,
                  "notes": not_offerings[0].get("notes", "Not an offering slip")}]
 
+    # Auto-fill current date if missing
+    from datetime import datetime
+    current_date = datetime.now().strftime("%Y-%m-%d")
+
     # Verify totals with Python math and build scan_data
     for i, item in enumerate(items):
         items[i] = verify_and_compute_totals(item)
         items[i]["filename"] = filename
         items[i]["slip_number"] = item.get("slip_number", i + 1)
         items[i]["usage"] = usage
+
+        # Auto-fill date with current date if not detected
+        if not item.get("date") or item.get("date_confidence") == "none":
+            items[i]["date"] = current_date
+            items[i]["date_confidence"] = "auto-filled"
 
     return items

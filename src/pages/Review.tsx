@@ -14,6 +14,7 @@ import {
 type Offering = {
   id: number
   filename: string | null
+  title: string | null
   offering_date: string | null
   date_conf: string | null
   general: number
@@ -888,6 +889,21 @@ export function ReviewPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {/* Title */}
+              <div>
+                <label className="text-xs text-muted">Title</label>
+                {editMode ? (
+                  <input type="text" value={(editValues.title as string) || ''}
+                    onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))}
+                    placeholder="e.g., CCI San Ramon Operation Kid to Kid"
+                    className="w-full mt-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" />
+                ) : (
+                  <p className="text-sm font-medium">
+                    {selected.title || 'CCI SanRamon Weekly Offering'}
+                  </p>
+                )}
+              </div>
+
               {/* Date */}
               <div>
                 <label className="text-xs text-muted">Date</label>

@@ -50,6 +50,7 @@ export interface Offering {
   id: number
   filename: string | null
   file_hash: string | null
+  title: string | null
   offering_date: string | null
   date_conf: string | null
   general: number
