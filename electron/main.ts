@@ -20,8 +20,6 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 640,
     icon: path.join(__dirname, '../resources/icon.png'),
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 18 },
     backgroundColor: '#111827',
     show: false,
     webPreferences: {
