@@ -35,8 +35,11 @@ React 19 + TS + Vite + Tailwind + TanStack Query | Electron 41 | Supabase (Postg
 - **Operator:** upload/review/report only
 - **Invite:** base64 JSON (url, anonKey, serviceKey, env) → `~/.ots/config.json`
 
-## Git
-- Account: jpurusho (jerome.purushotham@gmail.com) — HTTPS + GH_TOKEN (SSH resolves to wrong account)
+## Git & CI/CD
+- **Account:** jpurusho (jerome.purushotham@gmail.com) — SSH configured as `git@github-jerome`
+- **Web deploy:** `.github/workflows/deploy.yml` — auto-runs on push to main, deploys to GitHub Pages
+- **Electron release:** `.github/workflows/release.yml` — auto-runs on `v*` tags, builds .app for macOS
+- **Release flow:** Bump package.json → commit → tag `vX.Y.Z` → push main + tag → CI builds Electron + deploys web
 
 ## Reference
 See `.claude/skills/ots-architecture.md` for: Electron layer files, pages table, shared components, DB tables/settings/functions, backend API endpoints, CI/CD details.
