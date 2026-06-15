@@ -1,11 +1,9 @@
 name: Deploy to GitHub Pages
 
-# Deploys the web app to GitHub Pages.
-# Can be triggered manually or runs automatically on main branch pushes.
+# Deploys the web app to GitHub Pages from main branch.
+# Triggered by: manual workflow_dispatch OR automatically by release.yml
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

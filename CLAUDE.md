@@ -37,9 +37,9 @@ React 19 + TS + Vite + Tailwind + TanStack Query | Electron 41 | Supabase (Postg
 
 ## Git & CI/CD
 - **Account:** jpurusho (jerome.purushotham@gmail.com) — SSH configured as `git@github-jerome`
-- **Web deploy:** `.github/workflows/deploy.yml` — auto-runs on push to main, deploys to GitHub Pages
-- **Electron release:** `.github/workflows/release.yml` — auto-runs on `v*` tags, builds .app for macOS
-- **Release flow:** Bump package.json → commit → tag `vX.Y.Z` → push main + tag → CI builds Electron + deploys web
+- **Web deploy:** `.github/workflows/deploy.yml` — manual only (workflow_dispatch) OR auto-triggered by release.yml
+- **Electron release:** `.github/workflows/release.yml` — auto-runs on `v*` tags, builds .app + triggers web deploy
+- **Release flow:** Bump package.json → commit → tag `vX.Y.Z` → push main + tag → only release.yml runs (builds Electron + triggers web deploy from main)
 
 ## Reference
 See `.claude/skills/ots-architecture.md` for: Electron layer files, pages table, shared components, DB tables/settings/functions, backend API endpoints, CI/CD details.
