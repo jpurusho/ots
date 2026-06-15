@@ -1,9 +1,9 @@
-name: Build & Release Electron App + Deploy Web
+name: Build & Release Electron App
 
-# Single workflow for releases:
-# 1. Builds macOS Electron .app with bundled Python backend
+# Builds macOS Electron app on version tags:
+# 1. Builds .app with bundled Python backend
 # 2. Creates GitHub Release with .zip
-# 3. Deploys web app to GitHub Pages
+# 3. Reminds to manually deploy web: gh workflow run deploy.yml
 
 on:
   push:
@@ -49,11 +49,8 @@ jobs:
         with:
           files: release/*.zip
           generate_release_notes: true
+          body: |
+            ${{ github.event.head_commit.message }}
 
-      - name: Trigger web deployment
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          gh workflow run deploy.yml --ref main
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            **Next step:** Deploy web app with `gh workflow run deploy.yml`
 

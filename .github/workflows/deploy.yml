@@ -1,7 +1,8 @@
 name: Deploy to GitHub Pages
 
 # Deploys the web app to GitHub Pages from main branch.
-# Triggered by: manual workflow_dispatch OR automatically by release.yml
+# Manual-only: gh workflow run deploy.yml
+# After releases: run this manually to update the web app
 
 on:
   workflow_dispatch:
