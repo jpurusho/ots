@@ -751,7 +751,7 @@ async def generate_pdf(req: GeneratePdfRequest):
 class CardsPdfRequest(BaseModel):
     title: str
     period: str
-    cards: list  # [{date: str, rows: [[label, amount]], total: str}]
+    cards: list  # [{title: str, date: str, rows: [[label, amount]], total: str}]
     accent_color: Optional[str] = None
     upload_to_drive: bool = False
 
@@ -791,12 +791,13 @@ def _generate_cards_pdf(title: str, period: str, cards: list, accent_color: Opti
     amt_w = card_w * 0.40
 
     def make_card(card: dict) -> Table:
+        card_title = str(card.get('title', title))
         date_str = str(card.get('date', ''))
         cat_rows = card.get('rows', [])
         total_str = str(card.get('total', ''))
 
         data: list = [
-            [[Paragraph(escape(title), hdr_name), Paragraph('Week of ' + escape(date_str), hdr_date)], ''],
+            [[Paragraph(escape(card_title), hdr_name), Paragraph('Week of ' + escape(date_str), hdr_date)], ''],
         ]
         for row in cat_rows:
             data.append([Paragraph(escape(str(row[0])), cat_lbl), Paragraph(escape(str(row[1])), cat_amt)])
@@ -1063,12 +1064,13 @@ def _build_card_html(offering: dict, church_name: str, accent: str = "#4f46e5") 
                 '</tr>'
             )
 
+    card_title = offering.get("title") or church_name
     today = datetime.now().strftime("%-m/%d/%Y")
     return (
         '<div style="max-width:400px;margin:0 auto;font-family:system-ui,-apple-system,sans-serif">'
         '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.07)">'
         f'<tr><td style="background:{accent};padding:14px 20px 12px">'
-        f'<div style="font-size:15px;font-weight:700;color:#ffffff;line-height:1.3">{church_name}</div>'
+        f'<div style="font-size:15px;font-weight:700;color:#ffffff;line-height:1.3">{card_title}</div>'
         f'<div style="font-size:11px;color:rgba(255,255,255,0.82);margin-top:3px">Week of {date_str}</div>'
         '</td></tr>'
         '<tr><td style="padding:0;background:#ffffff">'

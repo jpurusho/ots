@@ -16,6 +16,7 @@ import type { EmailGroup } from './Settings'
 interface ApprovedOffering {
   id: number
   filename: string | null
+  title: string | null
   offering_date: string | null
   general: number
   cash: number
@@ -93,11 +94,13 @@ function buildEmailCard(
     if ((o as any)[cat.key] > 0) rows += row(cat.label, (o as any)[cat.key])
   }
 
+  const cardTitle = o.title || churchName
+
   return (
     '<div style="max-width:400px;margin:0 auto;font-family:system-ui,-apple-system,sans-serif">' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.07)">' +
       '<tr><td style="background:' + accent + ';padding:14px 20px 12px">' +
-        '<div style="font-size:15px;font-weight:700;color:#ffffff;line-height:1.3">' + churchName + '</div>' +
+        '<div style="font-size:15px;font-weight:700;color:#ffffff;line-height:1.3">' + cardTitle + '</div>' +
         '<div style="font-size:11px;color:rgba(255,255,255,0.82);margin-top:3px">Week of ' + formatDate(o.offering_date) + '</div>' +
       '</td></tr>' +
       '<tr><td style="padding:0;background:#ffffff">' +
@@ -515,7 +518,7 @@ export function ReportsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('offerings')
-        .select('id, filename, offering_date, general, cash, sunday_school, building_fund, misc, notes, approved_by_email, locked_at')
+        .select('id, filename, title, offering_date, general, cash, sunday_school, building_fund, misc, notes, approved_by_email, locked_at')
         .eq('status', 'approved')
       if (error) throw error
       return data as ApprovedOffering[]
@@ -705,6 +708,7 @@ export function ReportsPage() {
     try {
       const targets = singleOffering ? [singleOffering] : offerings
       const cards = targets.map(o => ({
+        title: o.title || title,
         date: formatDate(o.offering_date),
         rows: catList
           .filter(c => (o as any)[c.key] > 0)
@@ -747,6 +751,7 @@ export function ReportsPage() {
           title,
           period: 'Week of ' + formatDate(o.offering_date),
           cards: [{
+            title: o.title || title,
             date: formatDate(o.offering_date),
             rows: catList.filter(c => (o as any)[c.key] > 0).map(c => [c.label, '$' + (o as any)[c.key].toFixed(2)]),
             total: '$' + filteredRowTotal(o).toFixed(2),
