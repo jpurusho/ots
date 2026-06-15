@@ -558,6 +558,7 @@ export function ReviewPage() {
       const { error } = await supabase
         .from('offerings')
         .update({
+          title: values.title,
           offering_date: values.offering_date,
           general: values.general,
           cash: values.cash,
@@ -621,6 +622,7 @@ export function ReviewPage() {
   const startEdit = () => {
     if (!selected) return
     setEditValues({
+      title: selected.title || '',
       offering_date: toIsoDate(selected.offering_date),
       general: selected.general,
       cash: selected.cash,
