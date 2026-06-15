@@ -13,12 +13,11 @@ When this skill is invoked:
    - Create or update an ADR (Architecture Decision Record) in `docs/decisions/`
    - Follow the project's ADR format (check `docs/decisions/0001-record-architecture-decisions.md`)
 3. Run the cost summary script:
-   - If `scripts/token_cost.py` exists in the project, run: `python3 scripts/token_cost.py --summary`
+   - Run: `python3 ~/bin/claude-token-cost.py --summary`
    - This shows:
      * **CURRENT SESSION** (since last /clear): turns, tokens, cache, cost
      * **CUMULATIVE** (all sessions to date): total turns, tokens, cost
      * Top models used
-   - If the script doesn't exist, skip this step
 4. After showing the cost summary, prompt the user: "Ready to /clear?"
 
 ## What to capture
