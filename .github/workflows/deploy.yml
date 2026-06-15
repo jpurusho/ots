@@ -1,10 +1,9 @@
-name: Deploy to GitHub Pages
+name: Deploy to GitHub Pages (dev builds only)
+
+# This workflow deploys the web app to GitHub Pages for non-release commits.
+# For tagged releases (v*), release.yml handles both Electron AND web deployment.
 
 on:
-  push:
-    branches: [main]
-    tags-ignore:
-      - '**'
   workflow_dispatch:
 
 permissions:
