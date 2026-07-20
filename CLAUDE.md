@@ -44,5 +44,13 @@ React 19 + TS + Vite + Tailwind + TanStack Query | Electron 41 | Supabase (Postg
   2. CI builds Electron (release.yml runs automatically)
   3. Manually deploy web: `gh workflow run deploy.yml`
 
+## Cost Efficiency
+- **Batch work** — for multi-part changes, do all in one turn
+- **Read once, act once** — don't re-read files you just edited (Edit/Write fails loudly if broken)
+- **Check memory/ADRs first** — before asking "what did we decide about X?"
+- **Use Explore for broad searches** — keeps grep output out of main context
+- **Be decisive** — when path is clear, act; don't enumerate options you won't pursue
+- **/clear after milestones** — CLAUDE.md + ADRs + memory are the durable state
+
 ## Reference
 See `.claude/skills/ots-architecture.md` for: Electron layer files, pages table, shared components, DB tables/settings/functions, backend API endpoints, CI/CD details.
