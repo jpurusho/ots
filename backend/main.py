@@ -1301,6 +1301,7 @@ async def run_pipeline(req: RunPipelineRequest):
         "emails_sent": 0,
         "errors": [],
     }
+    auto_approved_weeks = set()  # Track weeks with newly auto-approved offerings
 
     # Step 1: Import from Drive with auto-scan
     try:
@@ -1341,6 +1342,10 @@ async def run_pipeline(req: RunPipelineRequest):
                     }).eq("id", offering["id"]).execute()
                     summary["auto_approved"] += 1
 
+                    # Track week for batch email check
+                    if offering.get("offering_date"):
+                        auto_approved_weeks.add(offering["offering_date"])
+
                     # Step 3: Email if enabled (per_approval mode)
                     if req.auto_email and auto_email_enabled and group and mode == "per_approval":
                         email_result = _send_auto_email(offering, church_name, group, accent)
@@ -1351,14 +1356,12 @@ async def run_pipeline(req: RunPipelineRequest):
                 except Exception as e:
                     summary["errors"].append(f"Approve #{offering['id']}: {str(e)}")
 
-    # Step 3b: Weekly batch email check
+    # Step 3b: Weekly batch email check (only for weeks with newly auto-approved offerings)
     if req.auto_email and auto_email_enabled and group and mode == "weekly_batch":
-        # Check if any week is now fully approved
-        approved_today = supabase.table("offerings").select("offering_date").eq("status", "approved").execute()
+        # Check if any week with newly auto-approved offerings is now fully approved
         checked_weeks = set()
-        for o in (approved_today.data or []):
-            date = o.get("offering_date")
-            if not date or date in checked_weeks:
+        for date in auto_approved_weeks:
+            if date in checked_weeks:
                 continue
             checked_weeks.add(date)
             week_offerings = _get_offerings_for_week(date)
