@@ -1225,12 +1225,19 @@ async def auto_email_offering(req: AutoEmailRequest):
             pending_count = sum(1 for o in week_offerings if o.get("status") != "approved")
             return {"success": False, "skipped": True, "reason": f"Weekly batch: {pending_count} offerings still pending"}
 
-        # Only send batch if this offering is the most recently approved one in the week
-        # (prevents duplicate emails when re-approving or when multiple approvals trigger concurrently)
-        most_recent = max((o for o in week_offerings if o.get("status") == "approved"),
-                          key=lambda o: o.get("locked_at") or "", default=None)
-        if most_recent and most_recent["id"] != req.offering_id:
-            return {"success": False, "skipped": True, "reason": "Not the most recent approval in this week"}
+        # Only send batch if we haven't already sent it for this week
+        # Check activity log for a batch email marker for this week
+        try:
+            dt = datetime.strptime(offering["offering_date"], "%Y-%m-%d")
+            sunday = dt - timedelta(days=dt.weekday() + 1) if dt.weekday() != 6 else dt
+            week_start = sunday.strftime("%Y-%m-%d")
+        except ValueError:
+            week_start = offering["offering_date"]
+
+        # Check if we already sent a batch email for this week
+        activity_check = supabase.table("activity_log").select("id").eq("action", "weekly_batch_email").eq("details", f"Week of {week_start}").execute()
+        if activity_check.data:
+            return {"success": False, "skipped": True, "reason": "Weekly batch email already sent for this week"}
 
         # Send combined card for all approved offerings this week
         combined_html = ""
@@ -1276,6 +1283,19 @@ async def auto_email_offering(req: AutoEmailRequest):
             server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_user, to_list + cc_list + bcc_list, msg.as_string())
             server.quit()
+
+            # Log that we sent this week's batch email
+            try:
+                supabase.table("activity_log").insert({
+                    "user_email": "automation",
+                    "action": "weekly_batch_email",
+                    "details": f"Week of {week_start}",
+                    "target_type": "offering",
+                    "target_id": None,
+                }).execute()
+            except Exception:
+                pass  # Don't fail if logging fails
+
             return {"success": True, "recipients": len(to_list), "cards": len(week_offerings)}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -1371,6 +1391,18 @@ async def run_pipeline(req: RunPipelineRequest):
             if date in checked_weeks:
                 continue
             checked_weeks.add(date)
+
+            # Check if we already sent batch email for this week
+            try:
+                dt = datetime.strptime(date, "%Y-%m-%d")
+                sunday = dt - timedelta(days=dt.weekday() + 1) if dt.weekday() != 6 else dt
+                week_start = sunday.strftime("%Y-%m-%d")
+            except ValueError:
+                week_start = date
+            activity_check = supabase.table("activity_log").select("id").eq("action", "weekly_batch_email").eq("details", f"Week of {week_start}").execute()
+            if activity_check.data:
+                continue  # Already sent for this week
+
             week_offerings = _get_offerings_for_week(date)
             if all(wo.get("status") == "approved" for wo in week_offerings) and week_offerings:
                 # Build combined card
@@ -1412,6 +1444,19 @@ async def run_pipeline(req: RunPipelineRequest):
                             server.sendmail(smtp_user, to_list + cc_list + bcc_list, msg.as_string())
                             server.quit()
                             summary["emails_sent"] += 1
+
+                            # Log that we sent this week's batch email
+                            try:
+                                supabase.table("activity_log").insert({
+                                    "user_email": "automation",
+                                    "action": "weekly_batch_email",
+                                    "details": f"Week of {week_start}",
+                                    "target_type": "offering",
+                                    "target_id": None,
+                                }).execute()
+                            except Exception:
+                                pass  # Don't fail if logging fails
+
                         except Exception as e:
                             summary["errors"].append(f"Weekly email: {str(e)}")
 
