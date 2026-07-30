@@ -1225,6 +1225,13 @@ async def auto_email_offering(req: AutoEmailRequest):
             pending_count = sum(1 for o in week_offerings if o.get("status") != "approved")
             return {"success": False, "skipped": True, "reason": f"Weekly batch: {pending_count} offerings still pending"}
 
+        # Only send batch if this offering is the most recently approved one in the week
+        # (prevents duplicate emails when re-approving or when multiple approvals trigger concurrently)
+        most_recent = max((o for o in week_offerings if o.get("status") == "approved"),
+                          key=lambda o: o.get("locked_at") or "", default=None)
+        if most_recent and most_recent["id"] != req.offering_id:
+            return {"success": False, "skipped": True, "reason": "Not the most recent approval in this week"}
+
         # Send combined card for all approved offerings this week
         combined_html = ""
         for o in sorted(week_offerings, key=lambda x: x.get("offering_date") or ""):
