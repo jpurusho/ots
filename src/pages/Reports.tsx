@@ -1367,7 +1367,7 @@ export function ReportsPage() {
                     <span>Cash: <strong>${grandTotal.cash.toFixed(2)}</strong></span>
                     {grandTotal.sunday_school > 0 && <span>SS: <strong>${grandTotal.sunday_school.toFixed(2)}</strong></span>}
                     {grandTotal.building_fund > 0 && <span>BF: <strong>${grandTotal.building_fund.toFixed(2)}</strong></span>}
-                    {grandTotal.misc > 0 && <span>Misc: <strong>${grandTotal.misc.toFixed(2)}</strong></span>
+                    {grandTotal.misc > 0 && <span>Misc: <strong>${grandTotal.misc.toFixed(2)}</strong></span>}
                     <span className="text-primary font-bold">Total: ${grandTotalSum.toFixed(2)}</span>
                   </div>
                 </div>
