@@ -521,6 +521,7 @@ export function ReportsPage() {
   const [emailCc, setEmailCc] = useState('')
   const [emailBcc, setEmailBcc] = useState('')
   const [emailSubject, setEmailSubject] = useState('')
+  const [summaryCardDriveStatus, setSummaryCardDriveStatus] = useState<'uploading' | { link: string; name: string } | { error: string } | null>(null)
 
   const { data: emailGroups = [] } = useQuery({
     queryKey: ['email_groups'],
@@ -884,6 +885,66 @@ export function ReportsPage() {
     finally { setEmailSending(false) }
   }
 
+  const exportSummaryCardAsPdf = async () => {
+    setCardsExporting(true)
+    try {
+      const resp = await fetch((await getBackendUrl()) + '/api/pdf/generate-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          period: periodLabel,
+          cards: [{
+            title,
+            date: periodLabel,
+            rows: catList.filter(c => filteredGrandTotal[c.key] > 0).map(c => [c.label, '$' + filteredGrandTotal[c.key].toFixed(2)]),
+            total: '$' + filteredGrandTotalSum.toFixed(2),
+          }],
+          accent_color: accentColors.card || accentColors.report || '#16a34a',
+        }),
+      })
+      const data = await resp.json()
+      if (!data.success) throw new Error(data.detail || 'Failed')
+      const blob = new Blob([Uint8Array.from(atob(data.pdf_base64), c => c.charCodeAt(0))], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = data.filename; a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Summary card PDF failed')
+    } finally {
+      setCardsExporting(false)
+    }
+  }
+
+  const uploadSummaryCardToDrive = async () => {
+    setSummaryCardDriveStatus('uploading')
+    try {
+      const resp = await fetch((await getBackendUrl()) + '/api/pdf/generate-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          period: periodLabel,
+          cards: [{
+            title,
+            date: periodLabel,
+            rows: catList.filter(c => filteredGrandTotal[c.key] > 0).map(c => [c.label, '$' + filteredGrandTotal[c.key].toFixed(2)]),
+            total: '$' + filteredGrandTotalSum.toFixed(2),
+          }],
+          accent_color: accentColors.card || accentColors.report || '#16a34a',
+          upload_to_drive: true,
+        }),
+      })
+      const data = await resp.json()
+      if (!data.success) throw new Error(data.detail || 'Upload failed')
+      if (data.drive) setSummaryCardDriveStatus({ name: data.drive.name, link: data.drive.link })
+      else setSummaryCardDriveStatus({ error: data.drive_error || 'Drive not configured' })
+    } catch (err) {
+      setSummaryCardDriveStatus({ error: err instanceof Error ? err.message : 'Upload failed' })
+    }
+  }
+
   const buildEmailReportHtml = () => {
     const rc = accentColors.report || '#16a34a'
     const thStyle = 'padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase;color:#64748b;border-bottom:2px solid #cbd5e1;white-space:nowrap'
@@ -1229,8 +1290,8 @@ export function ReportsPage() {
                   <div className="rounded-xl border border-border overflow-hidden shadow-sm">
                     <div className="px-5 py-4 border-b border-border" style={{ backgroundColor: accentColors.card }}>
                       <h2 className="text-base font-bold text-white">{title}</h2>
-                      <p className="text-xs text-white/80 mt-1">{periodLabel}</p>
-                      <p className="text-[10px] text-white/70 mt-0.5">{offerings.length} offering{offerings.length !== 1 ? 's' : ''}</p>
+                      <p className="text-xs text-white/80 mt-1">{viewMode === 'yearly' ? 'Yearly Summary' : 'Date Range Summary'}</p>
+                      <p className="text-[10px] text-white/70 mt-0.5">{periodLabel} · {offerings.length} offering{offerings.length !== 1 ? 's' : ''}</p>
                     </div>
                     <div className="bg-card px-5 py-3 space-y-2">
                       {filteredGrandTotal.general > 0 && (
@@ -1268,7 +1329,33 @@ export function ReportsPage() {
                         <span>${filteredGrandTotalSum.toFixed(2)}</span>
                       </div>
                     </div>
+                    <div className="px-4 py-2 border-t border-border bg-muted/20 flex gap-2 justify-center">
+                      <button onClick={() => exportSummaryCardAsPdf()} disabled={cardsExporting}
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
+                        <Download className="w-3 h-3" /> PDF
+                      </button>
+                      <button onClick={() => uploadSummaryCardToDrive()} disabled={!!summaryCardDriveStatus}
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-muted-foreground/10 cursor-pointer disabled:opacity-50">
+                        {summaryCardDriveStatus === 'uploading' ? <Loader2 className="w-3 h-3 animate-spin" /> : <CloudUpload className="w-3 h-3" />}
+                        {summaryCardDriveStatus === 'uploading' ? 'Uploading...' : 'Drive'}
+                      </button>
+                      <button onClick={() => setEmailTarget(emailTarget?.type === 'summary' ? null : { type: 'summary' })}
+                        className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded cursor-pointer ${
+                          emailTarget?.type === 'summary' ? 'bg-primary text-primary-foreground' : 'border border-border hover:bg-muted-foreground/10'
+                        }`}>
+                        <Mail className="w-3 h-3" /> Email
+                      </button>
+                    </div>
                   </div>
+                  {summaryCardDriveStatus && summaryCardDriveStatus !== 'uploading' && (
+                    'link' in summaryCardDriveStatus
+                      ? <a href={summaryCardDriveStatus.link} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 justify-center text-xs text-success hover:underline mt-2">
+                          <ExternalLink className="w-3 h-3" />
+                          {summaryCardDriveStatus.name}
+                        </a>
+                      : <p className="text-center text-xs text-destructive mt-2">{summaryCardDriveStatus.error}</p>
+                  )}
                   <p className="text-center text-[10px] text-muted mt-2">Generated by OTS · {new Date().toLocaleDateString()}</p>
                 </div>
               ) : (
