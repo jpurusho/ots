@@ -62,7 +62,7 @@ def get_claude_client() -> anthropic.Anthropic:
             aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
     # Use custom httpx client to handle SSL issues (corporate proxies, macOS cert issues)
-    import httpx
+    import httpx2 as httpx
     http_client = httpx.Client(verify=False)
     if config["api_key"]:
         return anthropic.Anthropic(api_key=config["api_key"], http_client=http_client)
