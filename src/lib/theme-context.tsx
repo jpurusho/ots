@@ -120,6 +120,66 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
       destructive: '#ef4444', success: '#22c55e', warning: '#f59e0b',
     },
   },
+  silver: {
+    label: 'Silver',
+    dark: true,
+    colors: {
+      background: '#18181b', foreground: '#f4f4f5',
+      card: '#27272a', 'card-foreground': '#f4f4f5',
+      primary: '#a1a1aa', 'primary-foreground': '#ffffff',
+      muted: '#71717a', 'muted-foreground': '#a1a1aa',
+      border: '#3f3f46',
+      destructive: '#f87171', success: '#4ade80', warning: '#fbbf24',
+    },
+  },
+  gold: {
+    label: 'Gold',
+    dark: true,
+    colors: {
+      background: '#1c1917', foreground: '#fef3c7',
+      card: '#292524', 'card-foreground': '#fef3c7',
+      primary: '#eab308', 'primary-foreground': '#1c1917',
+      muted: '#ca8a04', 'muted-foreground': '#facc15',
+      border: '#44403c',
+      destructive: '#fb7185', success: '#86efac', warning: '#fde68a',
+    },
+  },
+  bronze: {
+    label: 'Bronze',
+    dark: true,
+    colors: {
+      background: '#1a120e', foreground: '#fef2e8',
+      card: '#2a1f19', 'card-foreground': '#fef2e8',
+      primary: '#cd7f32', 'primary-foreground': '#ffffff',
+      muted: '#b46c28', 'muted-foreground': '#d4915a',
+      border: '#3d2e24',
+      destructive: '#fb7185', success: '#86efac', warning: '#fbbf24',
+    },
+  },
+  platinum: {
+    label: 'Platinum',
+    dark: false,
+    colors: {
+      background: '#fafafa', foreground: '#27272a',
+      card: '#ffffff', 'card-foreground': '#27272a',
+      primary: '#71717a', 'primary-foreground': '#ffffff',
+      muted: '#a1a1aa', 'muted-foreground': '#d4d4d8',
+      border: '#e4e4e7',
+      destructive: '#ef4444', success: '#22c55e', warning: '#f59e0b',
+    },
+  },
+  steel: {
+    label: 'Steel',
+    dark: true,
+    colors: {
+      background: '#0a0e14', foreground: '#d3d8de',
+      card: '#151a21', 'card-foreground': '#d3d8de',
+      primary: '#4b5563', 'primary-foreground': '#ffffff',
+      muted: '#6b7280', 'muted-foreground': '#9ca3af',
+      border: '#1f2937',
+      destructive: '#f87171', success: '#4ade80', warning: '#fbbf24',
+    },
+  },
 }
 
 const STORAGE_KEY = 'ots-theme-preset'
