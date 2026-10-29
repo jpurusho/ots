@@ -84,7 +84,7 @@ export function DashboardPage() {
 
   const stats = [
     { label: 'Pending Review', value: pendingCount ?? '—', icon: Upload, color: 'text-warning', href: '/review' },
-    { label: 'Approved This Month', value: approvedThisMonth ?? '—', icon: ClipboardCheck, color: 'text-success', href: '/review' },
+    { label: 'Approved This Month', value: approvedThisMonth ?? '—', icon: ClipboardCheck, color: 'text-success', href: '/reports' },
     { label: 'Month Total', value: monthTotal != null ? `$${monthTotal.toFixed(2)}` : '—', icon: DollarSign, color: 'text-primary', href: '/reports' },
     { label: 'Total Offerings', value: totalOfferings ?? '—', icon: Calendar, color: 'text-muted', href: '/reports' },
   ]
