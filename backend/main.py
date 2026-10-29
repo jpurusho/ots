@@ -751,7 +751,7 @@ async def generate_pdf(req: GeneratePdfRequest):
 class CardsPdfRequest(BaseModel):
     title: str
     period: str
-    cards: list  # [{title: str, date: str, rows: [[label, amount]], total: str}]
+    cards: list  # [{title: str, date: str, rows: [[label, amount, superscript?]], total: str, footnotes?: [str]}]
     accent_color: Optional[str] = None
     upload_to_drive: bool = False
 
@@ -795,33 +795,86 @@ def _generate_cards_pdf(title: str, period: str, cards: list, accent_color: Opti
         date_str = str(card.get('date', ''))
         cat_rows = card.get('rows', [])
         total_str = str(card.get('total', ''))
+        footnotes = card.get('footnotes', [])
 
         data: list = [
             [[Paragraph(escape(card_title), hdr_name), Paragraph('Week of ' + escape(date_str), hdr_date)], ''],
         ]
         for row in cat_rows:
-            data.append([Paragraph(escape(str(row[0])), cat_lbl), Paragraph(escape(str(row[1])), cat_amt)])
+            # row can be [label, amount] or [label, amount, superscript]
+            label = str(row[0])
+            amount = str(row[1])
+            sup = str(row[2]) if len(row) > 2 and row[2] else ''
+
+            # Add superscript to label if present
+            if sup:
+                label_html = f'{escape(label)}<super><font color="{accent_color or "#4f46e5"}">{escape(sup)}</font></super>'
+            else:
+                label_html = escape(label)
+
+            data.append([Paragraph(label_html, cat_lbl), Paragraph(escape(amount), cat_amt)])
         data.append([Paragraph('Total', tot_lbl), Paragraph(escape(total_str), tot_amt)])
 
+        # Add footnotes section if present (combined into single cell)
+        if footnotes:
+            footnote_style = ParagraphStyle('FN', fontName='Helvetica', fontSize=7,
+                                          textColor=colors.HexColor('#64748b'), leading=9,
+                                          leftIndent=0, spaceBefore=1, spaceAfter=1)
+            footnote_lines = []
+            for i, note in enumerate(footnotes, 1):
+                note_html = f'<super><font color="{accent_color or "#4f46e5"}">{i}</font></super> {escape(note)}'
+                footnote_lines.append(note_html)
+            combined_html = '<br/>'.join(footnote_lines)
+            data.append([Paragraph(combined_html, footnote_style), ''])
+
         n = len(data)
+        num_cat_rows = len(cat_rows)
+        total_row_idx = 1 + num_cat_rows  # Header=0, categories=1..num_cat_rows, total=num_cat_rows+1
+        footnote_row_idx = total_row_idx + 1 if footnotes else None
+
         cmds = [
+            # Header row (title + date)
             ('SPAN', (0, 0), (-1, 0)),
             ('BACKGROUND', (0, 0), (-1, 0), accent),
             ('TOPPADDING', (0, 0), (-1, 0), 10), ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
             ('LEFTPADDING', (0, 0), (-1, 0), 12), ('RIGHTPADDING', (0, 0), (-1, 0), 12),
-            ('LEFTPADDING', (0, n - 1), (-1, n - 1), 12), ('RIGHTPADDING', (0, n - 1), (-1, n - 1), 12),
-            ('TOPPADDING', (0, n - 1), (-1, n - 1), 8), ('BOTTOMPADDING', (0, n - 1), (-1, n - 1), 8),
-            ('LINEABOVE', (0, n - 1), (-1, n - 1), 1.5, accent),
+            # Total row
+            ('LEFTPADDING', (0, total_row_idx), (-1, total_row_idx), 12),
+            ('RIGHTPADDING', (0, total_row_idx), (-1, total_row_idx), 12),
+            ('TOPPADDING', (0, total_row_idx), (-1, total_row_idx), 8),
+            ('BOTTOMPADDING', (0, total_row_idx), (-1, total_row_idx), 8),
+            ('LINEABOVE', (0, total_row_idx), (-1, total_row_idx), 1.5, accent),
+            # Border and alignment
             ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#e2e8f0')),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]
-        if n > 2:
+
+        # Category rows styling
+        if num_cat_rows > 0:
             cmds += [
-                ('LEFTPADDING', (0, 1), (-1, n - 2), 12), ('RIGHTPADDING', (0, 1), (-1, n - 2), 12),
-                ('TOPPADDING', (0, 1), (-1, n - 2), 5), ('BOTTOMPADDING', (0, 1), (-1, n - 2), 5),
+                ('LEFTPADDING', (0, 1), (-1, num_cat_rows), 12),
+                ('RIGHTPADDING', (0, 1), (-1, num_cat_rows), 12),
+                ('TOPPADDING', (0, 1), (-1, num_cat_rows), 5),
+                ('BOTTOMPADDING', (0, 1), (-1, num_cat_rows), 5),
             ]
-            for r in range(1, n - 2):
+            for r in range(1, num_cat_rows):
                 cmds.append(('LINEBELOW', (0, r), (-1, r), 0.5, colors.HexColor('#e5e7eb')))
+
+        # Footnotes styling (single row with all footnotes)
+        if footnotes:
+            # Span both columns for footnote row
+            cmds.append(('SPAN', (0, footnote_row_idx), (-1, footnote_row_idx)))
+            # Add separator line above footnotes
+            cmds.append(('LINEABOVE', (0, footnote_row_idx), (-1, footnote_row_idx), 0.5, colors.HexColor('#e2e8f0')))
+            # Background color for footnotes section
+            cmds.append(('BACKGROUND', (0, footnote_row_idx), (-1, footnote_row_idx), colors.HexColor('#f8fafc')))
+            # Padding for footnotes
+            cmds += [
+                ('LEFTPADDING', (0, footnote_row_idx), (-1, footnote_row_idx), 12),
+                ('RIGHTPADDING', (0, footnote_row_idx), (-1, footnote_row_idx), 12),
+                ('TOPPADDING', (0, footnote_row_idx), (-1, footnote_row_idx), 6),
+                ('BOTTOMPADDING', (0, footnote_row_idx), (-1, footnote_row_idx), 6),
+            ]
         t = Table(data, colWidths=[lbl_w, amt_w])
         t.setStyle(TableStyle(cmds))
         return t

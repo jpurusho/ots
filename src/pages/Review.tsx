@@ -33,7 +33,7 @@ type Offering = {
 
 interface ScanSection {
   denominations?: Record<string, number>
-  items?: Array<{ amount: number; count: number }>
+  items?: Array<{ amount: number; count: number; description?: string | null }>
   expr?: string
   total?: number
 }
@@ -100,7 +100,7 @@ function SectionBreakdown({ sectionKey, section, editing, onUpdate }: SectionBre
     onUpdate(updated)
   }
 
-  const updateItem = (index: number, field: 'amount' | 'count', value: number) => {
+  const updateItem = (index: number, field: 'amount' | 'count' | 'description', value: number | string) => {
     if (!onUpdate || !section.items) return
     const items = [...section.items]
     items[index] = { ...items[index], [field]: value }
@@ -110,7 +110,7 @@ function SectionBreakdown({ sectionKey, section, editing, onUpdate }: SectionBre
 
   const addItem = () => {
     if (!onUpdate) return
-    const items = [...(section.items || []), { amount: 0, count: 1 }]
+    const items = [...(section.items || []), { amount: 0, count: 1, description: null }]
     onUpdate({ ...section, items, total: items.reduce((s, i) => s + (i.amount || 0) * (i.count || 1), 0) })
   }
 
@@ -155,23 +155,42 @@ function SectionBreakdown({ sectionKey, section, editing, onUpdate }: SectionBre
       {!isDenom && section.items && (
         <div className="space-y-0.5">
           {section.items.map((item, i) => (
-            <div key={i} className="flex items-center gap-1 px-1.5 py-0.5 bg-card rounded text-xs">
-              <span className="text-muted w-5">#{i + 1}</span>
-              {editing ? (
-                <>
-                  <span>$</span>
-                  <input type="number" min="0" step="0.01" value={item.amount || ''}
-                    onChange={e => updateItem(i, 'amount', parseFloat(e.target.value) || 0)}
-                    className="w-16 px-1 py-0.5 rounded border border-border bg-background text-xs" />
-                  <span>&times;</span>
-                  <input type="number" min="1" value={item.count || 1}
-                    onChange={e => updateItem(i, 'count', parseInt(e.target.value) || 1)}
-                    className="w-10 px-1 py-0.5 text-center rounded border border-border bg-background text-xs" />
-                  <span>= <strong>${((item.amount || 0) * (item.count || 1)).toFixed(0)}</strong></span>
-                  <button onClick={() => removeItem(i)} className="ml-auto text-muted hover:text-destructive cursor-pointer text-[10px]">&times;</button>
-                </>
-              ) : (
-                <span className="ml-auto">${item.amount} &times; {item.count} = <strong>${(item.amount * item.count).toFixed(0)}</strong></span>
+            <div key={i} className="space-y-1">
+              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-card rounded text-xs">
+                <span className="text-muted w-5">#{i + 1}</span>
+                {editing ? (
+                  <>
+                    <span>$</span>
+                    <input type="number" min="0" step="0.01" value={item.amount || ''}
+                      onChange={e => updateItem(i, 'amount', parseFloat(e.target.value) || 0)}
+                      className="w-16 px-1 py-0.5 rounded border border-border bg-background text-xs" />
+                    <span>&times;</span>
+                    <input type="number" min="1" value={item.count || 1}
+                      onChange={e => updateItem(i, 'count', parseInt(e.target.value) || 1)}
+                      className="w-10 px-1 py-0.5 text-center rounded border border-border bg-background text-xs" />
+                    <span>= <strong>${((item.amount || 0) * (item.count || 1)).toFixed(0)}</strong></span>
+                    <button onClick={() => removeItem(i)} className="ml-auto text-muted hover:text-destructive cursor-pointer text-[10px]">&times;</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="ml-auto">${item.amount} &times; {item.count} = <strong>${(item.amount * item.count).toFixed(0)}</strong></span>
+                    {item.description && <span className="ml-1 text-[10px] text-primary">*</span>}
+                  </>
+                )}
+              </div>
+              {editing && (
+                <input
+                  type="text"
+                  placeholder="Description (optional, e.g., Harvest Festival)"
+                  value={item.description || ''}
+                  onChange={e => updateItem(i, 'description', e.target.value)}
+                  className="w-full px-1.5 py-0.5 text-[10px] rounded border border-border/50 bg-background/50 placeholder:text-muted-foreground/50"
+                />
+              )}
+              {!editing && item.description && (
+                <div className="px-1.5 py-0.5 text-[10px] text-muted italic">
+                  <span className="text-primary">*</span> {item.description}
+                </div>
               )}
             </div>
           ))}

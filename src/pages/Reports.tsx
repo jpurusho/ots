@@ -24,6 +24,7 @@ interface ApprovedOffering {
   building_fund: number
   misc: number
   notes: string | null
+  scan_data: Record<string, unknown> | null
   approved_by_email: string | null
   locked_at: string | null
 }
@@ -75,6 +76,58 @@ const fmt = (n: number) => n > 0 ? `$${n.toFixed(2)}` : '—'
 const rowTotal = (o: ApprovedOffering) =>
   (o.general || 0) + (o.cash || 0) + (o.sunday_school || 0) + (o.building_fund || 0) + (o.misc || 0)
 
+// Extract line-item descriptions from scan_data for footnotes
+interface LineItemWithDescription {
+  category: Category
+  amount: number
+  description: string
+}
+
+function extractDescriptions(offering: ApprovedOffering): LineItemWithDescription[] {
+  const items: LineItemWithDescription[] = []
+
+  // Handle grouped offerings (combined by date)
+  const offerings = (offering as any)._groupedOfferings || [offering]
+
+  for (const o of offerings) {
+    if (!o.scan_data) continue
+
+    try {
+      const scanData = typeof o.scan_data === 'string'
+        ? JSON.parse(o.scan_data)
+        : o.scan_data
+
+      const sections = scanData?.sections as Record<string, any> || {}
+
+      const sectionCategoryMap: Record<string, Category> = {
+        'general_checks': 'general',
+        'building_fund_checks': 'building_fund',
+        'other_checks': 'misc',
+      }
+
+      for (const [sectionKey, category] of Object.entries(sectionCategoryMap)) {
+        const section = sections[sectionKey]
+        if (!section?.items) continue
+
+        for (const item of section.items) {
+          if (item.description && item.description.trim()) {
+            const amount = (item.amount || 0) * (item.count || 1)
+            items.push({
+              category,
+              amount,
+              description: item.description.trim(),
+            })
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error extracting descriptions:', error)
+    }
+  }
+
+  return items
+}
+
 // Email-safe card using tables (Gmail/Outlook compatible), styled to match app card view.
 function buildEmailCard(
   churchName: string,
@@ -83,15 +136,67 @@ function buildEmailCard(
   accent = '#4f46e5'
 ): string {
   const t = catList.reduce((sum, c) => sum + ((o as any)[c.key] || 0), 0)
-  const row = (label: string, amount: number) =>
-    '<tr>' +
-      '<td style="padding:9px 20px;font-size:13px;color:#6b7280;border-bottom:1px solid #f1f5f9">' + label + '</td>' +
+
+  // Extract descriptions and build footnote map
+  const descriptions = extractDescriptions(o)
+  const categoryDescriptions: Record<Category, string[]> = {
+    general: [],
+    cash: [],
+    sunday_school: [],
+    building_fund: [],
+    misc: [],
+  }
+
+  // Group descriptions by category
+  for (const item of descriptions) {
+    const desc = `${item.description} ($${item.amount.toFixed(2)})`
+    categoryDescriptions[item.category].push(desc)
+  }
+
+  // Build footnote numbers for categories that have descriptions
+  let footnoteNum = 1
+  const categoryFootnotes: Record<Category, number[]> = {
+    general: [],
+    cash: [],
+    sunday_school: [],
+    building_fund: [],
+    misc: [],
+  }
+
+  for (const cat of catList) {
+    if (categoryDescriptions[cat.key].length > 0) {
+      for (let i = 0; i < categoryDescriptions[cat.key].length; i++) {
+        categoryFootnotes[cat.key].push(footnoteNum++)
+      }
+    }
+  }
+
+  const row = (label: string, amount: number, footnotes: number[]) => {
+    const sup = footnotes.length > 0 ? '<sup style="color:' + accent + '">' + footnotes.join(',') + '</sup>' : ''
+    return '<tr>' +
+      '<td style="padding:9px 20px;font-size:13px;color:#6b7280;border-bottom:1px solid #f1f5f9">' + label + sup + '</td>' +
       '<td style="padding:9px 20px;font-size:13px;text-align:right;border-bottom:1px solid #f1f5f9;font-weight:600;color:#111827">$' + amount.toFixed(2) + '</td>' +
     '</tr>'
+  }
 
   let rows = ''
   for (const cat of catList) {
-    if ((o as any)[cat.key] > 0) rows += row(cat.label, (o as any)[cat.key])
+    if ((o as any)[cat.key] > 0) {
+      rows += row(cat.label, (o as any)[cat.key], categoryFootnotes[cat.key])
+    }
+  }
+
+  // Build footnotes section
+  let footnotesHtml = ''
+  if (descriptions.length > 0) {
+    let noteNum = 1
+    const notes: string[] = []
+    for (const cat of catList) {
+      for (const desc of categoryDescriptions[cat.key]) {
+        notes.push('<div style="font-size:10px;color:#64748b;margin:2px 0"><sup style="color:' + accent + '">' + noteNum++ + '</sup> ' + desc + '</div>')
+      }
+    }
+    footnotesHtml = '<tr><td colspan="2" style="padding:10px 20px;background:#f8fafc;border-top:1px solid #e2e8f0">' + notes.join('') + '</td></tr>'
   }
 
   const cardTitle = o.title || churchName
@@ -110,6 +215,7 @@ function buildEmailCard(
             '<td style="padding:12px 20px;font-size:14px;font-weight:700;color:' + accent + ';border-top:2px solid ' + accent + '">Total</td>' +
             '<td style="padding:12px 20px;font-size:14px;font-weight:700;color:' + accent + ';text-align:right;border-top:2px solid ' + accent + '">$' + t.toFixed(2) + '</td>' +
           '</tr>' +
+          footnotesHtml +
         '</table>' +
       '</td></tr>' +
     '</table>' +
@@ -533,6 +639,8 @@ export function ReportsPage() {
   })
   const [showMissing, setShowMissing] = useState(true)
   const [displayMode, setDisplayMode] = useState<'table' | 'cards'>('table')
+  const [combineByDate, setCombineByDate] = useState(false)
+  const [selectedOfferings, setSelectedOfferings] = useState<Set<number>>(new Set())
 
   const [selectedCats, setSelectedCats] = useState<Set<Category>>(() => {
     try {
@@ -575,7 +683,7 @@ export function ReportsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('offerings')
-        .select('id, filename, title, offering_date, general, cash, sunday_school, building_fund, misc, notes, approved_by_email, locked_at')
+        .select('id, filename, title, offering_date, general, cash, sunday_school, building_fund, misc, notes, scan_data, approved_by_email, locked_at')
         .eq('status', 'approved')
       if (error) throw error
       return data as ApprovedOffering[]
@@ -660,10 +768,53 @@ export function ReportsPage() {
     })
   }, [offerings, month, year, viewMode])
 
+  // Group offerings by date (for combine mode)
+  const groupedOfferings = useMemo(() => {
+    if (!combineByDate) return offerings.map(o => [o])
+
+    const groups = new Map<string, ApprovedOffering[]>()
+    for (const offering of offerings) {
+      const dateKey = parseOfferingDate(offering.offering_date)?.toDateString() || offering.offering_date || ''
+      if (!groups.has(dateKey)) groups.set(dateKey, [])
+      groups.get(dateKey)!.push(offering)
+    }
+
+    // Create combined offerings (virtual records with merged data)
+    return Array.from(groups.values()).map(group => {
+      if (group.length === 1) return group
+
+      // Merge amounts
+      const combined: ApprovedOffering = {
+        id: group[0].id, // Use first ID (for UI key)
+        filename: group.map(o => o.filename).filter(Boolean).join(', '),
+        title: group.map(o => o.title).filter(Boolean).join(' + ') || null,
+        offering_date: group[0].offering_date,
+        general: group.reduce((sum, o) => sum + (o.general || 0), 0),
+        cash: group.reduce((sum, o) => sum + (o.cash || 0), 0),
+        sunday_school: group.reduce((sum, o) => sum + (o.sunday_school || 0), 0),
+        building_fund: group.reduce((sum, o) => sum + (o.building_fund || 0), 0),
+        misc: group.reduce((sum, o) => sum + (o.misc || 0), 0),
+        notes: group.map(o => o.notes).filter(Boolean).join(' | ') || null,
+        scan_data: null, // Will merge scan_data for descriptions
+        approved_by_email: group[0].approved_by_email,
+        locked_at: group[0].locked_at,
+      }
+
+      // Store original offerings for description extraction
+      (combined as any)._groupedOfferings = group
+
+      return [combined]
+    })
+  }, [offerings, combineByDate])
+
   // Merge offerings and missing Sundays for display
-  type DisplayRow = { type: 'offering'; data: ApprovedOffering } | { type: 'missing'; date: string }
+  type DisplayRow = { type: 'offering'; data: ApprovedOffering; group?: ApprovedOffering[] } | { type: 'missing'; date: string }
   const displayRows = useMemo((): DisplayRow[] => {
-    const rows: DisplayRow[] = offerings.map(o => ({ type: 'offering' as const, data: o }))
+    const rows: DisplayRow[] = groupedOfferings.map(group => ({
+      type: 'offering' as const,
+      data: group[0],
+      group: group.length > 1 ? group : undefined
+    }))
     if (showMissing) {
       for (const date of missingSundays) {
         rows.push({ type: 'missing' as const, date })
@@ -677,7 +828,7 @@ export function ReportsPage() {
       return da - db
     })
     return rows
-  }, [offerings, missingSundays, showMissing])
+  }, [groupedOfferings, missingSundays, showMissing])
 
   const grandTotal = offerings.reduce((acc, o) => ({
     general: acc.general + (o.general || 0), cash: acc.cash + (o.cash || 0),
@@ -764,14 +915,48 @@ export function ReportsPage() {
     setCardsExporting(true)
     try {
       const targets = singleOffering ? [singleOffering] : offerings
-      const cards = targets.map(o => ({
-        title: o.title || title,
-        date: formatDate(o.offering_date),
-        rows: catList
-          .filter(c => (o as any)[c.key] > 0)
-          .map(c => [c.label, '$' + (o as any)[c.key].toFixed(2)]),
-        total: '$' + filteredRowTotal(o).toFixed(2),
-      }))
+      const cards = targets.map(o => {
+        const descriptions = extractDescriptions(o)
+        const footnotes: string[] = []
+        const rowsWithFootnotes: Array<[string, string, string]> = []
+
+        // Build category footnote map
+        let footnoteNum = 1
+        const categoryFootnoteNums: Record<Category, number[]> = {
+          general: [],
+          cash: [],
+          sunday_school: [],
+          building_fund: [],
+          misc: [],
+        }
+
+        for (const cat of catList) {
+          const catDescs = descriptions.filter(d => d.category === cat.key)
+          for (const desc of catDescs) {
+            categoryFootnoteNums[cat.key].push(footnoteNum)
+            footnotes.push(`${desc.description} ($${desc.amount.toFixed(2)})`)
+            footnoteNum++
+          }
+        }
+
+        // Build rows with superscripts
+        for (const c of catList) {
+          if ((o as any)[c.key] > 0) {
+            const sup = categoryFootnoteNums[c.key].length > 0
+              ? categoryFootnoteNums[c.key].join(',')
+              : ''
+            rowsWithFootnotes.push([c.label, '$' + (o as any)[c.key].toFixed(2), sup])
+          }
+        }
+
+        return {
+          title: o.title || title,
+          date: formatDate(o.offering_date),
+          rows: rowsWithFootnotes,
+          total: '$' + filteredRowTotal(o).toFixed(2),
+          footnotes,
+        }
+      })
       const resp = await fetch((await getBackendUrl()) + '/api/pdf/generate-cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -801,6 +986,39 @@ export function ReportsPage() {
   const uploadCardToDrive = async (o: ApprovedOffering) => {
     setCardDriveStatus(prev => ({ ...prev, [o.id]: 'uploading' }))
     try {
+      const descriptions = extractDescriptions(o)
+      const footnotes: string[] = []
+      const rowsWithFootnotes: Array<[string, string, string]> = []
+
+      // Build category footnote map
+      let footnoteNum = 1
+      const categoryFootnoteNums: Record<Category, number[]> = {
+        general: [],
+        cash: [],
+        sunday_school: [],
+        building_fund: [],
+        misc: [],
+      }
+
+      for (const cat of catList) {
+        const catDescs = descriptions.filter(d => d.category === cat.key)
+        for (const desc of catDescs) {
+          categoryFootnoteNums[cat.key].push(footnoteNum)
+          footnotes.push(`${desc.description} ($${desc.amount.toFixed(2)})`)
+          footnoteNum++
+        }
+      }
+
+      // Build rows with superscripts
+      for (const c of catList) {
+        if ((o as any)[c.key] > 0) {
+          const sup = categoryFootnoteNums[c.key].length > 0
+            ? categoryFootnoteNums[c.key].join(',')
+            : ''
+          rowsWithFootnotes.push([c.label, '$' + (o as any)[c.key].toFixed(2), sup])
+        }
+      }
+
       const resp = await fetch((await getBackendUrl()) + '/api/pdf/generate-cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -810,8 +1028,9 @@ export function ReportsPage() {
           cards: [{
             title: o.title || title,
             date: formatDate(o.offering_date),
-            rows: catList.filter(c => (o as any)[c.key] > 0).map(c => [c.label, '$' + (o as any)[c.key].toFixed(2)]),
+            rows: rowsWithFootnotes,
             total: '$' + filteredRowTotal(o).toFixed(2),
+            footnotes,
           }],
           accent_color: accentColors.card || accentColors.report || '#16a34a',
           upload_to_drive: true,
@@ -842,6 +1061,8 @@ export function ReportsPage() {
       ? title + ' — ' + periodLabel
       : emailTarget.type === 'summary'
       ? title + ' — ' + periodLabel
+      : emailTarget.type === 'cards-multi'
+      ? title + ' — ' + selectedOfferings.size + ' Offering Cards'
       : title + ' — Week of ' + formatDate(emailTarget.offering?.offering_date || '')
     const g = emailGroupId !== 'custom' ? emailGroups.find(g => g.id === emailGroupId) : null
     if (g) {
@@ -1157,6 +1378,19 @@ export function ReportsPage() {
             )}
           </div>
 
+          {/* Combine by date toggle */}
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={combineByDate}
+                onChange={(e) => setCombineByDate(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-border cursor-pointer"
+              />
+              <span>Combine same-date offerings</span>
+            </label>
+          </div>
+
           {/* Filter + Export bar */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="relative flex-1 max-w-xs">
@@ -1185,6 +1419,21 @@ export function ReportsPage() {
                 {cardsExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
                 Cards PDF
               </button>
+              {selectedOfferings.size > 0 && (
+                <button
+                  onClick={() => {
+                    const selected = offerings.filter(o => selectedOfferings.has(o.id))
+                    if (selected.length === 1) {
+                      setEmailTarget({ type: 'card', offering: selected[0] })
+                    } else {
+                      // For multiple, open email with all selected cards
+                      setEmailTarget({ type: 'cards-multi', offering: undefined })
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer">
+                  <Mail className="w-3.5 h-3.5" /> Email {selectedOfferings.size} Selected
+                </button>
+              )}
               <div className="flex items-center gap-1.5">
                 <button onClick={handleDriveUpload} disabled={driveStatus === 'uploading'}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted-foreground/10 text-sm cursor-pointer disabled:opacity-60">
@@ -1226,7 +1475,13 @@ export function ReportsPage() {
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-primary flex-shrink-0" />
                   <span className="text-sm font-medium text-primary">
-                    {emailTarget.type === 'report' ? 'Email Report' : emailTarget.type === 'summary' ? 'Email Summary Card — ' + periodLabel : 'Email Card — ' + formatDate(emailTarget.offering?.offering_date || '')}
+                    {emailTarget.type === 'report'
+                      ? 'Email Report'
+                      : emailTarget.type === 'summary'
+                      ? 'Email Summary Card — ' + periodLabel
+                      : emailTarget.type === 'cards-multi'
+                      ? `Email ${selectedOfferings.size} Selected Cards`
+                      : 'Email Card — ' + formatDate(emailTarget.offering?.offering_date || '')}
                   </span>
                 </div>
                 <button onClick={() => { setEmailTarget(null); setEmailTo(''); setEmailCc(''); setEmailBcc(''); setEmailSubject('') }}
@@ -1271,6 +1526,11 @@ export function ReportsPage() {
                     const o = emailTarget.offering
                     if (emailTarget.type === 'report') sendEmail(buildEmailReportHtml())
                     else if (emailTarget.type === 'summary') sendEmail(buildEmailSummaryCard(title, periodLabel, offerings, catList, accentColors.card))
+                    else if (emailTarget.type === 'cards-multi') {
+                      const selected = offerings.filter(o => selectedOfferings.has(o.id))
+                      const cardsHtml = selected.map(o => buildEmailCard(title, o, catList, accentColors.card)).join('<div style="margin:20px 0"></div>')
+                      sendEmail(cardsHtml)
+                    }
                     else if (o) sendEmail(buildEmailCard(title, o, catList, accentColors.card))
                   }}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-50">
@@ -1488,6 +1748,20 @@ export function ReportsPage() {
                 </colgroup>
                 <thead>
                   <tr className="bg-card border-b border-border">
+                    <th className="px-3 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedOfferings.size > 0 && selectedOfferings.size === offerings.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedOfferings(new Set(offerings.map(o => o.id)))
+                          } else {
+                            setSelectedOfferings(new Set())
+                          }
+                        }}
+                        className="w-3.5 h-3.5 rounded border-border cursor-pointer"
+                      />
+                    </th>
                     {COLUMNS.map(col => (
                       <th key={col.key} onClick={() => toggleSort(col.key)}
                         className={`px-3 py-3 text-xs font-medium text-muted cursor-pointer hover:text-foreground select-none transition-colors ${
@@ -1510,6 +1784,7 @@ export function ReportsPage() {
                     if (row.type === 'missing') {
                       return (
                         <tr key={`missing-${row.date}`} className="bg-warning/5">
+                          <td className="px-3 py-2"></td>
                           <td className="px-3 py-2 font-medium text-warning">
                             <div className="flex items-center gap-1.5">
                               <span className="w-3 h-3 rounded-full bg-warning/30 flex-shrink-0" />
@@ -1523,11 +1798,27 @@ export function ReportsPage() {
                       )
                     }
                     const o = row.data
+                    const isSelected = selectedOfferings.has(o.id)
                     return (
                       <React.Fragment key={o.id}>
-                        <tr onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
-                          className="hover:bg-muted-foreground/5 cursor-pointer">
-                          <td className="px-3 py-2.5 font-medium">
+                        <tr className="hover:bg-muted-foreground/5">
+                          <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                const newSelected = new Set(selectedOfferings)
+                                if (e.target.checked) {
+                                  newSelected.add(o.id)
+                                } else {
+                                  newSelected.delete(o.id)
+                                }
+                                setSelectedOfferings(newSelected)
+                              }}
+                              className="w-3.5 h-3.5 rounded border-border cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5 font-medium cursor-pointer" onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}>
                             <div className="flex items-center gap-1.5">
                               {expandedId === o.id ? <ChevronUp className="w-3 h-3 text-muted" /> : <ChevronDown className="w-3 h-3 text-muted" />}
                               {formatDate(o.offering_date)}
@@ -1542,7 +1833,7 @@ export function ReportsPage() {
                         </tr>
                         {expandedId === o.id && (
                           <tr>
-                            <td colSpan={7} className="px-4 py-3 bg-card/50">
+                            <td colSpan={8} className="px-4 py-3 bg-card/50">
                               <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-1 text-xs">
                                   <p className="font-medium text-sm mb-2">Week of {formatDate(o.offering_date)}</p>

@@ -91,7 +91,7 @@ Return a JSON array with one object per slip (even if only 1):
         "total": <number>
       }},
       "general_checks": {{
-        "items": [{{"amount": <number>, "count": <number>}}, ...],
+        "items": [{{"amount": <number>, "count": <number>, "description": "<optional note if written on slip>"}}, ...],
         "total": <number>
       }},
       "sunday_school_cash": {{
@@ -99,11 +99,11 @@ Return a JSON array with one object per slip (even if only 1):
         "total": <number>
       }},
       "building_fund_checks": {{
-        "items": [{{"amount": <number>, "count": <number>}}, ...],
+        "items": [{{"amount": <number>, "count": <number>, "description": "<optional note if written on slip>"}}, ...],
         "total": <number>
       }},
       "other_checks": {{
-        "items": [{{"amount": <number>, "count": <number>}}, ...],
+        "items": [{{"amount": <number>, "count": <number>, "description": "<optional note if written on slip>"}}, ...],
         "total": <number>
       }}
     }},
@@ -124,6 +124,10 @@ SECTION EXTRACTION RULES:
 - Only include sections that have data (omit empty sections)
 - For denominations: count for each bill type, total = sum(denomination × count)
 - For checks: each entry as amount × count, total = sum(amount × count)
+- For check descriptions: if a note/label is written next to a check entry (e.g. "Harvest Festival", "Youth Group", "Special Collection"), include it as "description" in that item
+- Examples of descriptions: "Harvest Festival", "Building Fund Drive", "Youth Mission Trip", "Christmas Offering"
+- ABBREVIATION LEGEND SUPPORT: If line items have abbreviations (e.g., "500x1=500 HF") and a legend/key appears at the bottom (e.g., "Notes: HF=Harvest Festival, YM=Youth Mission"), automatically expand abbreviations to full descriptions for each line item
+- If no description is written for a check entry, omit the "description" field or set to null
 - "general" = general_checks.total (checks only)
 - "cash" = general_cash.total (cash denominations only)
 - Total = general + cash + sunday_school + building_fund + misc
