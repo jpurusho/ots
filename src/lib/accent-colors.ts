@@ -22,8 +22,8 @@ export function useAccentColors(): AccentColors {
       const map = Object.fromEntries((data || []).map(r => [r.key, r.value]))
       const themeColor = getThemeColor()
       return {
-        report: map.report_accent_color || themeColor,
-        card: map.card_accent_color || themeColor,
+        report: (map.report_accent_color && map.report_accent_color.trim()) || themeColor,
+        card: (map.card_accent_color && map.card_accent_color.trim()) || themeColor,
       }
     },
   })

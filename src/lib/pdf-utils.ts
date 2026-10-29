@@ -9,6 +9,7 @@ interface PdfRequest {
   filename: string
   upload_to_drive?: boolean
   accent_color?: string
+  footer_text?: string
 }
 
 interface PdfResponse {

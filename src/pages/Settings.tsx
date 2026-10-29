@@ -1180,9 +1180,24 @@ function ThemesTab() {
   const hasColorChanges = reportColor !== accentColors.report || cardColor !== accentColors.card
 
   const saveColors = async () => {
-    await supabase.from('app_settings').update({ value: reportColor }).eq('key', 'report_accent_color')
-    await supabase.from('app_settings').update({ value: cardColor }).eq('key', 'card_accent_color')
+    // Use upsert to create rows if they don't exist
+    await supabase.from('app_settings').upsert({
+      key: 'report_accent_color',
+      value: reportColor,
+      category: 'general',
+      label: 'Report Accent Color',
+      description: 'Header and footer color for offering report PDFs and emails'
+    })
+    await supabase.from('app_settings').upsert({
+      key: 'card_accent_color',
+      value: cardColor,
+      category: 'general',
+      label: 'Card Accent Color',
+      description: 'Accent color for weekly cards, check contributions, and year-end PDFs'
+    })
+    // Invalidate both the general settings query and the accent-colors query
     queryClient.invalidateQueries({ queryKey: ['settings'] })
+    queryClient.invalidateQueries({ queryKey: ['settings', 'accent-colors'] })
     setColorSaved(true)
     setTimeout(() => setColorSaved(false), 2000)
   }
