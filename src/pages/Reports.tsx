@@ -1078,6 +1078,7 @@ export function ReportsPage() {
       church: title,
       period: type === 'card' ? 'Week of ' + formatDate(offeringDate || '') : periodLabel,
       date: offeringDate ? formatDate(offeringDate) : new Date().toLocaleDateString(),
+      generated: new Date().toLocaleDateString(),
       count: type === 'cards-multi' ? String(selectedOfferings.size) : '1',
     }
     return template.replace(/\{([^}]*)\}/g, (_, key) => context[key] ?? key)
