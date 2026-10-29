@@ -10,6 +10,7 @@ interface PdfRequest {
   upload_to_drive?: boolean
   accent_color?: string
   footer_text?: string
+  footnotes?: string[]  // Optional footnotes to display after table
 }
 
 interface PdfResponse {
