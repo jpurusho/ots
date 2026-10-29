@@ -1637,11 +1637,31 @@ export function ReportsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {offerings.map(o => {
                   const t = rowTotal(o)
+                  const isSelected = selectedOfferings.has(o.id)
                   return (
-                    <div key={o.id} className="rounded-xl border border-border overflow-hidden hover:border-primary/30 transition-colors">
-                      <div className="bg-card px-4 py-3 border-b border-border">
-                        <p className="text-sm font-bold">{formatDate(o.offering_date)}</p>
-                        <p className="text-[10px] text-muted">Week offering</p>
+                    <div key={o.id} className={`rounded-xl border overflow-hidden hover:border-primary/30 transition-colors ${
+                      isSelected ? 'border-primary shadow-md' : 'border-border'
+                    }`}>
+                      <div className="bg-card px-4 py-3 border-b border-border flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="text-sm font-bold">{formatDate(o.offering_date)}</p>
+                          <p className="text-[10px] text-muted">Week offering</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedOfferings)
+                            if (e.target.checked) {
+                              newSelected.add(o.id)
+                            } else {
+                              newSelected.delete(o.id)
+                            }
+                            setSelectedOfferings(newSelected)
+                          }}
+                          className="w-4 h-4 rounded border-border cursor-pointer mt-0.5"
+                          onClick={(e) => e.stopPropagation()}
+                        />
                       </div>
                       <div className="px-4 py-3 space-y-1.5">
                         {o.general > 0 && (
