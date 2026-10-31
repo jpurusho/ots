@@ -1890,6 +1890,7 @@ export function ReportsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm table-fixed">
                 <colgroup>
+                  <col className="w-10" /> {/* Checkbox */}
                   <col className="w-[130px]" /> {/* Date */}
                   <col /> {/* General */}
                   <col /> {/* Cash */}
@@ -2021,6 +2022,7 @@ export function ReportsPage() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-card border-t-2 border-border font-bold">
+                    <td className="px-3 py-3"></td>
                     <td className="px-3 py-3">Total</td>
                     <td className="px-3 py-3 text-right">${grandTotal.general.toFixed(2)}</td>
                     <td className="px-3 py-3 text-right">${grandTotal.cash.toFixed(2)}</td>
